@@ -1,0 +1,28 @@
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "golf-availability-bot"
+version = "0.1.0"
+description = "Golf tee time availability monitor for golfbox.no"
+authors = ["Your Name <your.email@example.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+requests = "^2.31.0"
+beautifulsoup4 = "^4.12.2"
+rich = "^13.7.0"
+win10toast = {version = "^0.9", markers = "sys_platform == 'win32'"}
+playwright = "^1.45.0"
+python-dotenv = "^1.0.1"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.0"
+black = "^23.7.0"
+flake8 = "^6.0.0"
+
+[tool.poetry.scripts]
+golf-monitor = "check_availability:main"
+golf-playwright = "playwright_runner:main"
