@@ -110,6 +110,21 @@ def load_config():
         "DEFAULT_END": os.getenv("DEFAULT_END", "15:00"),
         "GRID_LABELS": labels,
         "TEE_CAPACITY": int(os.getenv("TEE_CAPACITY", "4")),
+        # Email configuration
+        "EMAIL_ENABLED": os.getenv("EMAIL_ENABLED", "false").lower() in ("1", "true", "yes"),
+        "SMTP_HOST": os.getenv("SMTP_HOST", "").strip(),
+        "SMTP_PORT": os.getenv("SMTP_PORT", "587").strip(),
+        "SMTP_SSL": os.getenv("SMTP_SSL", "false").lower() in ("1", "true", "yes"),
+        "SMTP_USER": os.getenv("SMTP_USER", "").strip(),
+        "SMTP_PASS": os.getenv("SMTP_PASS", "").strip(),
+        "EMAIL_FROM": os.getenv("EMAIL_FROM", "").strip(),
+        "EMAIL_TO": os.getenv("EMAIL_TO", "").strip(),
+        # Optional explicit date control for URL expansion
+        # GRID_DATES: comma/newline-separated YYYY-MM-DD list
+        # GRID_DATE_RANGE_START / GRID_DATE_RANGE_END: inclusive range YYYY-MM-DD
+        "GRID_DATES": os.getenv("GRID_DATES", "").strip(),
+        "GRID_DATE_RANGE_START": os.getenv("GRID_DATE_RANGE_START", "").strip(),
+        "GRID_DATE_RANGE_END": os.getenv("GRID_DATE_RANGE_END", "").strip(),
     }
 
 
@@ -137,6 +152,61 @@ def send_notification(title: str, message: str) -> None:
     except Exception:
         pass
     print(f"[ALERT] {title}: {message}")
+
+
+def send_email_notification(subject: str, body: str) -> None:
+    """Send email notification using SMTP settings from .env."""
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    
+    config = load_config()
+    
+    if not config.get("EMAIL_ENABLED"):
+        print("[EMAIL] Email notifications disabled")
+        return
+    
+    try:
+        smtp_host = config.get("SMTP_HOST")
+        smtp_port = int(config.get("SMTP_PORT", 587))
+        smtp_ssl = config.get("SMTP_SSL", "0") == "1"
+        smtp_user = config.get("SMTP_USER")
+        smtp_pass = config.get("SMTP_PASS")
+        email_from = config.get("EMAIL_FROM")
+        email_to = config.get("EMAIL_TO")
+        
+        if not all([smtp_host, smtp_user, smtp_pass, email_from, email_to]):
+            print("[EMAIL] Missing SMTP configuration")
+            return
+        
+        # Parse multiple recipients (comma-separated)
+        recipients = [email.strip() for email in email_to.split(',') if email.strip()]
+        if not recipients:
+            print("[EMAIL] No valid recipients found")
+            return
+        
+        # Create message
+        msg = MIMEMultipart()
+        msg['From'] = email_from
+        msg['To'] = ', '.join(recipients)  # Display all recipients in header
+        msg['Subject'] = subject
+        msg.attach(MIMEText(body, 'plain'))
+        
+        # Send email
+        if smtp_ssl:
+            server = smtplib.SMTP_SSL(smtp_host, smtp_port)
+        else:
+            server = smtplib.SMTP(smtp_host, smtp_port)
+            server.starttls()
+        
+        server.login(smtp_user, smtp_pass)
+        server.send_message(msg, to_addrs=recipients)  # Send to all recipients
+        server.quit()
+        
+        print(f"[EMAIL] Sent: {subject}")
+        
+    except Exception as e:
+        print(f"[EMAIL] Failed to send: {e}")
 
 
 # ------------------------------ HTML Parser ------------------------------ #
@@ -246,11 +316,31 @@ def parse_grid_html(html: str) -> Dict[str, List[str]]:
                 return f"{m.group(1)}:{m.group(2)}"
             return None
 
-        # Only include fully free tiles (exclude partfree)
-        tiles = soup.select(
-            "div.hour.free, div.free.hour, .booking-slot.free, .time-slot.free"
-        )
+        # Include ALL tiles (free/partfree/full) and compute booked players per tile
+        tiles = soup.select("div.hour, .booking-slot, .time-slot")
         full_tiles = soup.select("div.hour.full, div.full.hour, .booking-slot.full, .time-slot.full")
+        # Aggregate available seats per time (sum across parallel tees/resources)
+        tile_total: Dict[str, int] = {}
+
+        def _read_capacity_attr(el) -> int | None:
+            try:
+                if not el:
+                    return None
+                for key in ("data-capacity", "data-slots", "data_capacity", "data_slots"):
+                    val = el.get(key)
+                    if val is None and hasattr(el, "attrs"):
+                        val = el.attrs.get(key)
+                    if val is None:
+                        continue
+                    m = re.search(r"\d+", str(val))
+                    if m:
+                        n = int(m.group(0))
+                        if n > 0:
+                            return n
+            except Exception:
+                return None
+            return None
+
         for tile in tiles:
             # Prefer explicit nested time label
             time_text = None
@@ -277,38 +367,88 @@ def parse_grid_html(html: str) -> Dict[str, List[str]]:
             if not time_text:
                 continue
 
-            # Column/slot label from id like row15col3 → Tee 3
-            col_label = "Slot"
-            tile_id = tile.get("id") or ""
-            m = re.search(r"col(\d+)", tile_id)
-            if m:
-                col_label = f"Tee {m.group(1)}"
-
-            tile_times.setdefault(time_text, []).append(col_label)
-
-            # Capacity estimation: count seat icons inside .item
+            # Capacity estimation
             try:
-                item = tile.find(class_=re.compile(r"\bitem\b", re.I))
-                icons = item.find_all("img") if item else []
-                # If specific filenames encode occupancy, refine here; otherwise count imgs
-                available_slots = len(icons) if icons else 1
-                tile_slots[time_text] = tile_slots.get(time_text, 0) + available_slots
-            except Exception:
-                pass
+                # Default tee capacity from env (fallback to 4)
+                try:
+                    env_capacity = int(os.getenv("TEE_CAPACITY", "4"))
+                except Exception:
+                    env_capacity = 4
 
-        if tile_times:
-            free_count = sum(len(v) for v in tile_times.values())
-            part_count = len(soup.select("div.hour.partfree, div.partfree.hour, .booking-slot.partfree, .time-slot.partfree"))
-            console.print(f"[dim]Tile-based free slots: {free_count} (partial tiles: {part_count}) · full tiles: {len(full_tiles)}[/dim]")
-            # Attach capacity counts by appending "(N)" to labels if >1
-            enhanced: Dict[str, List[str]] = {}
-            for hhmm, labels in tile_times.items():
-                n = tile_slots.get(hhmm)
-                if n and n > 1:
-                    enhanced[hhmm] = [f"{lbl} ({n})" for lbl in labels]
+                classes = " ".join(tile.get("class", [])).lower()
+
+                # Skip non-bookable tiles such as tournaments/grouped blocks
+                # Example seen in saved HTML: class "hour tournament" and attribute data-grouping="1"
+                try:
+                    if ("tournament" in classes) or (tile.get("data-grouping") is not None):
+                        continue
+                except Exception:
+                    pass
+
+                # Desktop structure
+                players = 0
+                total_rows = 0
+                flight = tile.find(class_=re.compile(r"\btime-players\b", re.I))
+                if flight:
+                    # Direct child rows only
+                    direct_rows = [child for child in flight.find_all("div", recursive=False)]
+                    row_blocks = []
+                    for row in direct_rows:
+                        cls = " ".join(row.get("class", [])).lower()
+                        if all(k in cls for k in ("d-flex", "align-items-center", "row", "flex-nowrap")):
+                            row_blocks.append(row)
+                    total_rows = len(row_blocks)
+                    for row in row_blocks:
+                        name_cell = row.find(class_=re.compile(r"\bfw-bold\b", re.I))
+                        if name_cell and name_cell.get_text(strip=True):
+                            players += 1
                 else:
-                    enhanced[hhmm] = labels
-            return enhanced
+                    # Mobile/classic: .item contains one <img> per booked player
+                    try:
+                        item = tile.find(class_=re.compile(r"\bitem\b", re.I))
+                        if item:
+                            players = len(item.find_all("img"))
+                        if players == 0:
+                            # Fallback: greenfee icons anywhere in tile
+                            players = len(tile.select("img[src*='bookinggrid/greenfee']"))
+                    except Exception:
+                        players = 0
+
+                # Capacity: data attribute > desktop row count > env default
+                cap_attr = _read_capacity_attr(tile) or _read_capacity_attr(flight) or _read_capacity_attr(tile.find(class_=re.compile(r"\bitem\b", re.I)) if tile else None)
+                if cap_attr and cap_attr > 0:
+                    capacity = cap_attr
+                elif total_rows and total_rows > players:
+                    capacity = total_rows
+                else:
+                    capacity = env_capacity
+
+                # CSS helper for quick overrides
+                if "full" in classes:
+                    available = 0
+                elif "free" in classes and players == 0:
+                    available = capacity
+                else:
+                    available = max(0, capacity - players)
+
+                # Per-time availability: sum availability across parallel tiles/resources
+                if available > 0:
+                    current = tile_total.get(time_text, 0)
+                    tile_total[time_text] = current + available
+            except Exception:
+                # If estimation fails, assume env capacity as an upper bound (use max, not sum)
+                current = tile_total.get(time_text, 0)
+                tile_total[time_text] = current + env_capacity
+
+        if tile_total:
+            console.print(f"[dim]Tile-based times parsed: {len(tile_total)} · full tiles: {len(full_tiles)}[/dim]")
+            # Simplified labeling: one entry per time → "N spots available"
+            simplified: Dict[str, List[str]] = {}
+            for hhmm, total in tile_total.items():
+                n = max(0, int(total)) if total is not None else 0
+                label = f"{n} spot{'s' if n != 1 else ''} available"
+                simplified[hhmm] = [label]
+            return simplified
 
     return tee_times
 
@@ -330,6 +470,82 @@ async def parse_by_aria(page: Page, debug: bool = False) -> Dict[str, List[str]]
         hhmm = m.group(0)
         results.setdefault(hhmm, []).append("Tee")
     return results
+
+
+# --------------------------- Email Body Builder --------------------------- #
+
+def _format_times_detail(times: Dict[str, List[str]]) -> str:
+    try:
+        lines: List[str] = []
+        for hhmm in sorted(times.keys()):
+            labels = times.get(hhmm, [])
+            if labels:
+                lines.append(f"- {hhmm}: {', '.join(labels)}")
+            else:
+                lines.append(f"- {hhmm}")
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
+def _compose_email_body(
+    title: str,
+    *,
+    course_name: str | None,
+    day_str: str | None,
+    url: str | None,
+    all_times: Dict[str, List[str]],
+    new_items: List[str],
+) -> str:
+    """Compose a detailed plain-text email body including all available info."""
+    try:
+        now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # Summaries
+        total_tee_times = len(all_times)
+        total_slots = sum(len(v) for v in all_times.values())
+        # Group new items by time
+        new_map: Dict[str, List[str]] = {}
+        for item in new_items:
+            # item format: "HH:MM||Label"
+            parts = item.split("||", 1)
+            if len(parts) == 2:
+                new_map.setdefault(parts[0], []).append(parts[1])
+            elif parts:
+                new_map.setdefault(parts[0], []).append("")
+
+        lines: List[str] = []
+        lines.append(title)
+        lines.append("")
+        lines.append(f"Detected at: {now}")
+        if course_name:
+            lines.append(f"Course: {course_name}")
+        if day_str and day_str != "-":
+            lines.append(f"Day: {day_str}")
+        if url:
+            lines.append(f"URL: {url}")
+        lines.append("")
+        lines.append(f"Summary: {total_tee_times} tee-time entries, {total_slots} slot labels parsed")
+        if new_items:
+            lines.append(f"New openings: {len(new_items)}")
+        lines.append("")
+        if new_items:
+            lines.append("New items:")
+            for hhmm in sorted(new_map.keys()):
+                labels = ", ".join([l for l in new_map[hhmm] if l]) or "(no label)"
+                lines.append(f"  • {hhmm}: {labels}")
+            lines.append("")
+        lines.append("All parsed times:")
+        detail = _format_times_detail(all_times)
+        if detail:
+            lines.append(detail)
+        else:
+            lines.append("(none)")
+        lines.append("")
+        lines.append("— Golf Availability Bot")
+        return "\n".join(lines)
+    except Exception:
+        # Fallback minimal body
+        return f"{title}\nNew items: {', '.join(sorted({ni.split('||')[0] for ni in new_items}))}"
 
 
 # --------------------------- Browser Orchestration ------------------------ #
@@ -766,6 +982,42 @@ def _rewrite_url_for_day(u: str, day: datetime.date) -> str:
         return u
 
 
+def _parse_env_dates(cfg: dict) -> List[datetime.date]:
+    """Parse GRID_DATES or GRID_DATE_RANGE_* from env into a list of dates.
+
+    Returns an empty list if nothing explicitly specified.
+    """
+    days: List[datetime.date] = []
+    try:
+        if cfg.get("GRID_DATES"):
+            raw = re.split(r"[,;\n\r\t]+", cfg["GRID_DATES"]) if cfg["GRID_DATES"] else []
+            for part in raw:
+                part = part.strip()
+                if not part:
+                    continue
+                y, m, d = map(int, part.split("-"))
+                days.append(datetime.date(y, m, d))
+            # de-dup and sort
+            days = sorted(set(days))
+            return days
+        start_s = (cfg.get("GRID_DATE_RANGE_START") or "").strip()
+        end_s = (cfg.get("GRID_DATE_RANGE_END") or "").strip()
+        if start_s and end_s:
+            y1, m1, d1 = map(int, start_s.split("-"))
+            y2, m2, d2 = map(int, end_s.split("-"))
+            start = datetime.date(y1, m1, d1)
+            end = datetime.date(y2, m2, d2)
+            cur = start
+            while cur <= end:
+                days.append(cur)
+                cur = cur + datetime.timedelta(days=1)
+            return days
+    except Exception:
+        # fall through to empty
+        return []
+    return []
+
+
 async def run_loop(grid_urls: List[str], headless: bool, check_interval: int, jitter_seconds: int, persist_notified: bool, debug: bool = False, grid_labels: Optional[List[str]] = None) -> None:
     """Main monitoring loop.
 
@@ -809,6 +1061,7 @@ async def run_loop(grid_urls: List[str], headless: bool, check_interval: int, ji
                 # Windows with ProactorEventLoop may not support it; rely on KeyboardInterrupt
                 pass
 
+        first_cycle = True
         while not stop.is_set():
             cycle_start = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             console.print(f"\n⛳ Cycle start {cycle_start}", style="bold blue")
@@ -838,6 +1091,16 @@ async def run_loop(grid_urls: List[str], headless: bool, check_interval: int, ji
                     if new_items:
                         preview = "; ".join(sorted({ni.split("||")[0] for ni in new_items}))
                         send_notification("⛳ New tee times", f"{preview}")
+                        if not first_cycle:
+                            detailed = _compose_email_body(
+                                "⛳ New tee times",
+                                course_name=None,
+                                day_str=None,
+                                url=url_key,
+                                all_times=times,
+                                new_items=new_items,
+                            )
+                            send_email_notification("⛳ New tee times", detailed)
                         console.print(f"[green]New openings:[/green] {', '.join(new_items)}")
                 except Exception as e:
                     console.print(f"[red]App navigation failed:[/red] {e}")
@@ -845,7 +1108,16 @@ async def run_loop(grid_urls: List[str], headless: bool, check_interval: int, ji
                 # If NEXT_WEEKEND is set, rewrite URLs for upcoming Saturday and Sunday
                 cfg_next_weekend = os.getenv("NEXT_WEEKEND", "false").lower() in ("1", "true", "yes")
                 urls_to_check: List[tuple[str, str, str]] = []  # (url, label, base_url)
-                if cfg_next_weekend:
+                # Expand URLs per explicit env-driven dates or weekend
+                explicit_days = _parse_env_dates(load_config())
+                if explicit_days:
+                    for day in explicit_days:
+                        for idx, base in enumerate(grid_urls):
+                            course_label = (grid_labels or [])[idx] if grid_labels and idx < len(grid_labels) else ""
+                            url_day = _rewrite_url_for_day(base, day)
+                            label = f"{course_label + ' · ' if course_label else ''}{day}"
+                            urls_to_check.append((url_day, label, base))
+                elif cfg_next_weekend:
                     today = datetime.date.today()
                     # Next Saturday
                     days_until_sat = (5 - today.weekday()) % 7
@@ -904,12 +1176,24 @@ async def run_loop(grid_urls: List[str], headless: bool, check_interval: int, ji
                             # Only times (optionally with capacity), comma-separated
                             preview = ", ".join(sorted({ni.split("||")[0] for ni in new_items}))
                             send_notification("⛳ New tee times", preview)
+                            if not first_cycle:
+                                detailed = _compose_email_body(
+                                    "⛳ New tee times",
+                                    course_name=course_name,
+                                    day_str=day_str,
+                                    url=base_url,
+                                    all_times=times,
+                                    new_items=new_items,
+                                )
+                                send_email_notification("⛳ New tee times", detailed)
                             console.print(f"[green]New openings:[/green] {', '.join(new_items)}")
                     except Exception as e:
                         console.print(f"[red]Failed to check URL:[/red] {url} → {e}")
 
             # Save state at end of cycle
             await save_storage_state(context)
+            # After the first full cycle, allow email notifications
+            first_cycle = False
 
             # Sleep with jitter
             jitter = random.randint(-max(0, jitter_seconds // 2), jitter_seconds)
@@ -960,6 +1244,46 @@ def main() -> None:
     _APPLY_END_MIN = end_min
     if not cfg["GRID_URLS"]:
         console.print("Set `GOLFBOX_GRID_URL` in .env (one or comma-separated legacy grid URL(s)).", style="yellow")
+    # Pretty summary of key env before starting
+    try:
+        # Resolve displayed time window
+        resolved_start = start_s
+        resolved_end = end_s
+        # Build short dates description
+        if (cfg.get("GRID_DATES") or cfg.get("GRID_DATE_RANGE_START") or cfg.get("NEXT_WEEKEND")):
+            # Render a small table
+            from rich.table import Table as _T
+            from rich import box as _box
+            table = _T(title="Run Configuration", box=_box.SIMPLE, show_header=False)
+            table.add_column("Key", style="bold cyan", no_wrap=True)
+            table.add_column("Value", style="white")
+
+            # Clubs summary
+            urls = cfg.get("GRID_URLS", []) or []
+            labels = cfg.get("GRID_LABELS") or []
+            clubs_desc = f"{len(urls)} URL(s)"
+            if labels:
+                clubs_desc += f" · labels: {', '.join(labels[:3])}{' …' if len(labels) > 3 else ''}"
+
+            # Dates summary
+            if (cfg.get("GRID_DATES") or "").strip():
+                parts = [p.strip() for p in re.split(r"[,;\n\r\t]+", cfg.get("GRID_DATES", "")) if p.strip()]
+                dates_desc = ", ".join(parts[:3]) + (" …" if len(parts) > 3 else "")
+            elif (cfg.get("GRID_DATE_RANGE_START") and cfg.get("GRID_DATE_RANGE_END")):
+                dates_desc = f"{cfg['GRID_DATE_RANGE_START']} … {cfg['GRID_DATE_RANGE_END']}"
+            elif str(cfg.get("NEXT_WEEKEND", "")).lower() in ("1", "true", "yes"):
+                dates_desc = "Next weekend (Sat+Sun)"
+            else:
+                dates_desc = "(no date rewrite)"
+
+            table.add_row("User", (cfg.get("GOLFBOX_USER") or "(none)"))
+            table.add_row("Clubs", clubs_desc)
+            table.add_row("Dates", dates_desc)
+            table.add_row("Time window", f"{resolved_start}–{resolved_end}")
+            console.print(table)
+    except Exception:
+        pass
+
     console.print("Playwright runner starting. Press Ctrl+C to stop.", style="blue")
 
     try:

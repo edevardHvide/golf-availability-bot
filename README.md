@@ -80,7 +80,65 @@ python -m playwright install chromium
 
 ## Usage
 
-### Run the monitor
+### 🆕 **Enhanced CLI Configuration (Recommended)**
+
+The new enhanced configuration system lets you set everything in a `.env` file - no command line arguments needed!
+
+#### **Quick Start:**
+```powershell
+# 1. Activate your environment
+.venv\Scripts\activate.ps1
+
+# 2. Run the interactive setup
+python setup_config.py
+
+# 3. Start monitoring
+python golf_monitor.py
+```
+
+#### **Manual Setup:**
+```powershell
+# 1. Copy the configuration template
+copy config_template.env .env
+
+# 2. Edit .env with your preferences
+# 3. Start monitoring
+python golf_monitor.py
+```
+
+### **Configuration Examples:**
+
+**Weekend Golfer (Oslo area, afternoons only):**
+```bash
+SELECTED_CLUBS=oslo,miklagard,bogstad
+WEEKEND_MODE=true
+WEEKENDS_COUNT=3
+TIME_START=13:00
+TIME_END=17:00
+PLAYER_COUNT=4
+```
+
+**Flexible Weekday Player (any club, mornings):**
+```bash
+SELECTED_CLUBS=
+DAYS_AHEAD=14
+TIME_START=07:00
+TIME_END=12:00
+PLAYER_COUNT=2
+```
+
+**Specific Tournament Preparation:**
+```bash
+SELECTED_CLUBS=oslo
+SPECIFIC_DATES=2025-02-15,2025-02-16
+PREFERRED_TIMES=09:00,10:00,11:00
+PLAYER_COUNT=4
+MIN_AVAILABLE_SLOTS=2
+```
+
+### **Legacy Usage (Original Method)**
+
+You can still use the original command-line interface:
 
 ```powershell
 python check_availability.py monitor --between 14-18 --days-ahead 2
@@ -96,11 +154,6 @@ python check_availability.py monitor --dates 2025-08-20,2025-08-21
 
 # Morning rounds only
 python check_availability.py monitor --between 7-12
-
-# Use GolfBox legacy grid for a specific course
-python check_availability.py monitor \
-  --course-grid "oslo golfklubb=https://www.golfbox.no/site/my_golfbox/ressources/booking/grid.asp?clubid=123" \
-  --dates 2025-08-20
 ```
 
 ### Test notifications
@@ -148,6 +201,56 @@ set GOLFBOX_EMAIL=your@email.com
 set GOLFBOX_PASSWORD=yourpassword
 python check_availability.py monitor
 ```
+
+### Email Notifications
+
+To receive email notifications when new tee times are found, set up email configuration in your `.env` file:
+
+```bash
+# Copy the example configuration
+copy env.example .env
+
+# Edit .env with your email settings
+EMAIL_ENABLED=true
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SSL=false
+SMTP_USER=your@gmail.com
+SMTP_PASS=your_app_password
+EMAIL_FROM=your@gmail.com
+EMAIL_TO=recipient@email.com
+```
+
+**Common SMTP Settings:**
+
+**Gmail:**
+```bash
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SSL=false
+SMTP_USER=your@gmail.com
+SMTP_PASS=your_app_password  # Generate at https://myaccount.google.com/apppasswords
+```
+
+**Outlook/Hotmail:**
+```bash
+SMTP_HOST=smtp-mail.outlook.com
+SMTP_PORT=587
+SMTP_SSL=false
+SMTP_USER=your@outlook.com
+SMTP_PASS=your_password
+```
+
+**Yahoo:**
+```bash
+SMTP_HOST=smtp.mail.yahoo.com
+SMTP_PORT=587
+SMTP_SSL=false
+SMTP_USER=your@yahoo.com
+SMTP_PASS=your_app_password  # Generate in Yahoo Account Security settings
+```
+
+**Note:** For Gmail and Yahoo, you'll need to generate an app-specific password rather than using your regular account password.
 
 ### Command Line Options
 

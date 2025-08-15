@@ -57,6 +57,61 @@ def send_notification(title, message):
         print(f"Error sending alert: {e}")
 
 
+def send_email_notification(subject: str, body: str) -> None:
+    """Send email notification using SMTP settings from environment variables."""
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    
+    # Check if email is enabled
+    email_enabled = os.getenv("EMAIL_ENABLED", "false").lower() in ("1", "true", "yes")
+    if not email_enabled:
+        print("[EMAIL] Email notifications disabled")
+        return
+    
+    try:
+        smtp_host = os.getenv("SMTP_HOST", "").strip()
+        smtp_port = int(os.getenv("SMTP_PORT", "587"))
+        smtp_ssl = os.getenv("SMTP_SSL", "false").lower() in ("1", "true", "yes")
+        smtp_user = os.getenv("SMTP_USER", "").strip()
+        smtp_pass = os.getenv("SMTP_PASS", "").strip()
+        email_from = os.getenv("EMAIL_FROM", "").strip()
+        email_to = os.getenv("EMAIL_TO", "").strip()
+        
+        if not all([smtp_host, smtp_user, smtp_pass, email_from, email_to]):
+            print("[EMAIL] Missing SMTP configuration")
+            return
+        
+        # Parse multiple recipients (comma-separated)
+        recipients = [email.strip() for email in email_to.split(',') if email.strip()]
+        if not recipients:
+            print("[EMAIL] No valid recipients found")
+            return
+        
+        # Create message
+        msg = MIMEMultipart()
+        msg['From'] = email_from
+        msg['To'] = ', '.join(recipients)  # Display all recipients in header
+        msg['Subject'] = subject
+        msg.attach(MIMEText(body, 'plain'))
+        
+        # Send email
+        if smtp_ssl:
+            server = smtplib.SMTP_SSL(smtp_host, smtp_port)
+        else:
+            server = smtplib.SMTP(smtp_host, smtp_port)
+            server.starttls()
+        
+        server.login(smtp_user, smtp_pass)
+        server.send_message(msg, to_addrs=recipients)  # Send to all recipients
+        server.quit()
+        
+        print(f"[EMAIL] Sent: {subject}")
+        
+    except Exception as e:
+        print(f"[EMAIL] Failed to send: {e}")
+
+
 def _ensure_session(session: requests.Session | None) -> requests.Session:
     """Return a configured requests.Session.
 
@@ -1084,6 +1139,10 @@ def run_monitor(
                     send_notification(
                         title="⛳ Golf Tee Times Updated!",
                         message=summary,
+                    )
+                    send_email_notification(
+                        subject="⛳ Golf Tee Times Updated!",
+                        body=summary,
                     )
 
                 console.print("\n🔔 Changes detected!", style="bold green")
