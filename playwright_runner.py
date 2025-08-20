@@ -34,6 +34,10 @@ from rich.table import Table
 from rich import box
 
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
+try:
+    from golfbot.smart_login import smart_login  # sophisticated login system
+except Exception:
+    smart_login = None  # type: ignore
 
 
 console = Console()
@@ -66,6 +70,23 @@ def _format_min(mins: int) -> str:
 ROOT_DIR = Path(__file__).parent.resolve()
 STATE_PATH = ROOT_DIR / "state.json"
 DEBUG_DIR = ROOT_DIR / "debug_html"
+APP_URL = "https://golfbox.golf/#/"
+APP_ORIGIN = "https://golfbox.golf/"
+
+
+def _ai_login_first_run_enabled() -> bool:
+    """Return True if AI login is allowed and this appears to be the first run.
+
+    Controlled by env AI_LOGIN_FIRST_RUN (default: true). We treat the absence of
+    storage state as a first run.
+    """
+    use = os.getenv("AI_LOGIN_FIRST_RUN", "true").lower() in ("1", "true", "yes")
+    return use and (not STATE_PATH.exists())
+
+
+def _ai_login_forced() -> bool:
+    """If true, only the AI agent should be used for login (testing mode)."""
+    return os.getenv("AI_LOGIN_ONLY", "false").lower() in ("1", "true", "yes")
 
 
 def load_config():
@@ -211,7 +232,7 @@ def send_email_notification(subject: str, body: str) -> None:
 
 # ------------------------------ HTML Parser ------------------------------ #
 
-TIME_RE = re.compile(r"\b\d{1,2}:\d{2}\b")
+from golfbot.grid_parser import TIME_RE, parse_grid_html as parse_grid_html_shared
 def _parse_hhmm(hhmm: str) -> Optional[int]:
     """Return minutes since midnight for 'HH:MM' or None."""
     m = re.fullmatch(r"(\d{1,2}):(\d{2})", hhmm.strip())
@@ -240,217 +261,212 @@ def _apply_between_filter(times: Dict[str, List[str]], start_minute: int | None 
 
 
 def parse_grid_html(html: str) -> Dict[str, List[str]]:
-    """Parse legacy grid HTML → { 'HH:MM': ['Tee N', ...], ... }.
+    # Delegate directly to shared module for backward compatibility
+    return parse_grid_html_shared(html)
 
-    Heuristics similar to the requests-based implementation; looks for cells that
-    appear 'available' and associates them to a time label from the row header.
+
+async def count_players_per_tee_time(page: Page, parent_selector: str = ".d-flex.grid-row.w-100") -> Dict[str, int]:
+    """Count number of players per tee time by inspecting tiles.
+
+    Heuristic:
+    - Each tile is an element with class 'hour'
+    - The tee time is inside '.time' or anywhere in tile text (HH:MM)
+    - Players are represented by <img> inside '.item' (fallback: greenfee icons)
     """
-    soup = BeautifulSoup(html, "html.parser")
-    table = soup.find("table") or soup
-
-    header_labels: List[str] = []
-    thead = table.find("thead") if table else None
-    if thead:
-        header_cells = thead.find_all(["th", "td"]) if thead else []
-        for i, cell in enumerate(header_cells):
-            text = cell.get_text(" ", strip=True)
-            header_labels.append(text or f"Tee {i}")
-
-    tee_times: Dict[str, List[str]] = {}
-
-    def is_available_cell(cell) -> bool:
-        classes = " ".join(cell.get("class", [])).lower()
-        text = cell.get_text(" ", strip=True).lower()
-        # Exclude explicitly non-full availability
-        if any(k in classes for k in ["partfree", "partial", "full", "occupied", "taken"]):
-            return False
-        if any(k in text for k in ["partfree", "partial", "full", "occupied", "taken"]):
-            return False
-        if any(k in classes for k in ["ledig", "available", "free", "bookable", "open"]):
-            return True
-        if any(k in text for k in ["ledig", "available", "free", "bookable", "ledig tid", "åpen"]):
-            return True
-        a = cell.find(["a", "button"], string=True)
-        if a and any(k in a.get_text(" ", strip=True).lower() for k in ["book", "bestill", "reserver", "reserve"]):
-            return True
-        return False
-
-    tbody = table.find("tbody") if table else None
-    row_iter = (tbody.find_all("tr") if tbody else table.find_all("tr")) if table else []
-    for row_idx, row in enumerate(row_iter):
-        cells = row.find_all(["th", "td"])
-        if not cells:
-            continue
-        time_label = None
-        first_text = cells[0].get_text(" ", strip=True) if cells else ""
-        m = TIME_RE.search(first_text)
-        if m:
-            time_label = m.group(0)
-        else:
-            row_text = row.get_text(" ", strip=True)
-            m2 = TIME_RE.search(row_text)
-            if m2:
-                time_label = m2.group(0)
-        if not time_label:
-            continue
-
-        for col_idx, cell in enumerate(cells[1:], start=1):
-            if not is_available_cell(cell):
-                continue
-            if header_labels and col_idx < len(header_labels):
-                col_label = header_labels[col_idx]
-            else:
-                col_label = f"Tee {col_idx}"
-            tee_times.setdefault(time_label, []).append(col_label)
-
-    # If the table-based parser found nothing, try tile-based grids like:
-    # <div id="row15col3" class="hour free"><div class="time">20:30</div> ...</div>
-    if not tee_times:
-        tile_times: Dict[str, List[str]] = {}
-        tile_slots: Dict[str, int] = {}
-
-        def extract_hhmm_from_iso(s: str) -> str | None:
-            # Example: 20250815T203000 → 20:30
-            m = re.search(r"T(\d{2})(\d{2})", s)
-            if m:
-                return f"{m.group(1)}:{m.group(2)}"
-            return None
-
-        # Include ALL tiles (free/partfree/full) and compute booked players per tile
-        tiles = soup.select("div.hour, .booking-slot, .time-slot")
-        full_tiles = soup.select("div.hour.full, div.full.hour, .booking-slot.full, .time-slot.full")
-        # Aggregate available seats per time (sum across parallel tees/resources)
-        tile_total: Dict[str, int] = {}
-
-        def _read_capacity_attr(el) -> int | None:
+    results: Dict[str, int] = {}
+    try:
+        parent = await page.query_selector(parent_selector)
+    except Exception:
+        parent = None
+    try:
+        hours = []
+        if parent:
             try:
-                if not el:
-                    return None
-                for key in ("data-capacity", "data-slots", "data_capacity", "data_slots"):
-                    val = el.get(key)
-                    if val is None and hasattr(el, "attrs"):
-                        val = el.attrs.get(key)
-                    if val is None:
-                        continue
-                    m = re.search(r"\d+", str(val))
-                    if m:
-                        n = int(m.group(0))
-                        if n > 0:
-                            return n
+                hours = await parent.query_selector_all(":scope > .hour")
             except Exception:
-                return None
-            return None
+                hours = []
+        if not hours:
+            hours = await page.query_selector_all(".hour")
 
-        for tile in tiles:
-            # Prefer explicit nested time label
-            time_text = None
-            time_div = tile.find(class_=re.compile(r"\btime\b", re.I))
-            if time_div:
-                txt = time_div.get_text(" ", strip=True)
-                m = TIME_RE.search(txt)
-                if m:
-                    time_text = m.group(0)
+        for tee in hours:
+            tee_time = ""
+            try:
+                time_el = await tee.query_selector(".time")
+                if time_el:
+                    txt = await time_el.text_content()
+                    if txt:
+                        m = TIME_RE.search(txt)
+                        if m:
+                            tee_time = m.group(0)
+                if not tee_time:
+                    txt_all = await tee.text_content()
+                    if txt_all:
+                        m2 = TIME_RE.search(txt_all)
+                        if m2:
+                            tee_time = m2.group(0)
+            except Exception:
+                pass
+            if not tee_time:
+                continue
 
-            # Fallback: parse from tile text
+            num_players = 0
+            try:
+                item_el = await tee.query_selector(".item")
+                if item_el:
+                    imgs = await item_el.query_selector_all("img")
+                    num_players = len(imgs)
+                if num_players == 0:
+                    alt_imgs = await tee.query_selector_all("img[src*='bookinggrid/greenfee']")
+                    num_players = len(alt_imgs)
+            except Exception:
+                pass
+
+            results[tee_time] = num_players
+    except Exception:
+        return results
+    return results
+
+
+def _available_from_text(text: Optional[str]) -> Optional[int]:
+    if not text:
+        return None
+    try:
+        low = text.lower()
+        if any(k in low for k in ["ledig", "ledige", "available", "free", "spots", "plass", "plasser"]):
+            m = re.search(r"(\d+)", low)
+            if m:
+                return int(m.group(1))
+    except Exception:
+        return None
+    return None
+
+
+async def fetch_availability_for_url(
+    context: BrowserContext,
+    url: str,
+    debug: bool = False,
+    assume_logged_in: bool = False,
+    parent_selector: str = ".d-flex.grid-row.w-100",
+) -> Dict[str, int]:
+    """Return HH:MM -> available slots, computed from DOM (players/capacity or aria text)."""
+    page = await login_and_goto_with_retries(
+        context, url, debug=debug, max_attempts=3, assume_logged_in=assume_logged_in
+    )
+    try:
+        try:
+            env_capacity = int(os.getenv("TEE_CAPACITY", "4"))
+        except Exception:
+            env_capacity = 4
+
+        # Aggregate available across tiles of same time
+        totals: Dict[str, int] = {}
+
+        parent = None
+        try:
+            parent = await page.query_selector(parent_selector)
+        except Exception:
+            parent = None
+        hours = []
+        if parent:
+            try:
+                hours = await parent.query_selector_all(":scope > .hour")
+            except Exception:
+                hours = []
+        if not hours:
+            hours = await page.query_selector_all(".hour, .booking-slot, .time-slot")
+
+        idx = 0
+        for tile in hours:
+            idx += 1
+            # Resolve time
+            time_text = ""
+            time_el = await tile.query_selector(".time")
+            if time_el:
+                txt = await time_el.text_content()
+                if txt:
+                    m = TIME_RE.search(txt)
+                    if m:
+                        time_text = m.group(0)
             if not time_text:
-                m = TIME_RE.search(tile.get_text(" ", strip=True))
-                if m:
-                    time_text = m.group(0)
-
-            # Fallback: parse from onclick ISO string
-            if not time_text:
-                onclick = tile.get("onclick") or ""
-                parsed = extract_hhmm_from_iso(onclick)
-                if parsed:
-                    time_text = parsed
-
+                txt_all = await tile.text_content()
+                if txt_all:
+                    m2 = TIME_RE.search(txt_all)
+                    if m2:
+                        time_text = m2.group(0)
             if not time_text:
                 continue
 
-            # Capacity estimation
-            try:
-                # Default tee capacity from env (fallback to 4)
+            # Direct availability from labels
+            available_from_text: Optional[int] = None
+            for key in ("aria-label", "title", "data-original-title"):
                 try:
-                    env_capacity = int(os.getenv("TEE_CAPACITY", "4"))
+                    val = await tile.get_attribute(key)
                 except Exception:
-                    env_capacity = 4
-
-                classes = " ".join(tile.get("class", [])).lower()
-
-                # Skip non-bookable tiles such as tournaments/grouped blocks
-                # Example seen in saved HTML: class "hour tournament" and attribute data-grouping="1"
+                    val = None
+                if val:
+                    parsed = _available_from_text(val)
+                    if parsed is not None:
+                        available_from_text = parsed
+                        break
+            if available_from_text is None:
+                # Child anchors/buttons or text
                 try:
-                    if ("tournament" in classes) or (tile.get("data-grouping") is not None):
-                        continue
+                    child = await tile.query_selector("a, button")
+                    cand = None
+                    if child:
+                        cand = await child.get_attribute("aria-label") or await child.get_attribute("title") or await child.text_content()
+                    else:
+                        cand = await tile.text_content()
+                    parsed = _available_from_text(cand or "")
+                    if parsed is not None:
+                        available_from_text = parsed
                 except Exception:
                     pass
 
-                # Desktop structure
-                players = 0
-                total_rows = 0
-                flight = tile.find(class_=re.compile(r"\btime-players\b", re.I))
-                if flight:
-                    # Direct child rows only
-                    direct_rows = [child for child in flight.find_all("div", recursive=False)]
-                    row_blocks = []
-                    for row in direct_rows:
-                        cls = " ".join(row.get("class", [])).lower()
-                        if all(k in cls for k in ("d-flex", "align-items-center", "row", "flex-nowrap")):
-                            row_blocks.append(row)
-                    total_rows = len(row_blocks)
-                    for row in row_blocks:
-                        name_cell = row.find(class_=re.compile(r"\bfw-bold\b", re.I))
-                        if name_cell and name_cell.get_text(strip=True):
-                            players += 1
-                else:
-                    # Mobile/classic: .item contains one <img> per booked player
-                    try:
-                        item = tile.find(class_=re.compile(r"\bitem\b", re.I))
-                        if item:
-                            players = len(item.find_all("img"))
-                        if players == 0:
-                            # Fallback: greenfee icons anywhere in tile
-                            players = len(tile.select("img[src*='bookinggrid/greenfee']"))
-                    except Exception:
-                        players = 0
+            if available_from_text is not None:
+                totals[time_text] = totals.get(time_text, 0) + max(0, int(available_from_text))
+                if debug:
+                    _dbg(f"Tile #{idx} {time_text}: availability (label) = {available_from_text}", True)
+                continue
 
-                # Capacity: data attribute > desktop row count > env default
-                cap_attr = _read_capacity_attr(tile) or _read_capacity_attr(flight) or _read_capacity_attr(tile.find(class_=re.compile(r"\bitem\b", re.I)) if tile else None)
-                if cap_attr and cap_attr > 0:
-                    capacity = cap_attr
-                elif total_rows and total_rows > players:
-                    capacity = total_rows
-                else:
-                    capacity = env_capacity
+            # Otherwise, infer from players and capacity
+            players = 0
+            item_el = await tile.query_selector(".item")
+            if item_el:
+                imgs = await item_el.query_selector_all("img")
+                players = len(imgs)
+            if players == 0:
+                alt_imgs = await tile.query_selector_all("img[src*='bookinggrid/greenfee']")
+                players = len(alt_imgs)
 
-                # CSS helper for quick overrides
-                if "full" in classes:
-                    available = 0
-                elif "free" in classes and players == 0:
-                    available = capacity
-                else:
-                    available = max(0, capacity - players)
+            # Capacity from data attributes if present
+            capacity = env_capacity
+            for key in ("data-capacity", "data-slots", "data_capacity", "data_slots"):
+                try:
+                    val = await tile.get_attribute(key)
+                except Exception:
+                    val = None
+                if val:
+                    m = re.search(r"\d+", str(val))
+                    if m:
+                        cap = int(m.group(0))
+                        if cap > 0:
+                            capacity = cap
+                            break
 
-                # Per-time availability: sum availability across parallel tiles/resources
-                if available > 0:
-                    current = tile_total.get(time_text, 0)
-                    tile_total[time_text] = current + available
-            except Exception:
-                # If estimation fails, assume env capacity as an upper bound (use max, not sum)
-                current = tile_total.get(time_text, 0)
-                tile_total[time_text] = current + env_capacity
+            available = max(0, capacity - players)
+            totals[time_text] = totals.get(time_text, 0) + available
+            if debug:
+                _dbg(f"Tile #{idx} {time_text}: players={players}, capacity={capacity}, available={available}", True)
 
-        if tile_total:
-            console.print(f"[dim]Tile-based times parsed: {len(tile_total)} · full tiles: {len(full_tiles)}[/dim]")
-            # Simplified labeling: one entry per time → "N spots available"
-            simplified: Dict[str, List[str]] = {}
-            for hhmm, total in tile_total.items():
-                n = max(0, int(total)) if total is not None else 0
-                label = f"{n} spot{'s' if n != 1 else ''} available"
-                simplified[hhmm] = [label]
-            return simplified
-
-    return tee_times
+        if debug:
+            _dbg(f"Totals: {totals}", True)
+        return totals
+    finally:
+        try:
+            await page.close()
+        except Exception:
+            pass
 
 
 async def parse_by_aria(page: Page, debug: bool = False) -> Dict[str, List[str]]:
@@ -551,10 +567,41 @@ def _compose_email_body(
 # --------------------------- Browser Orchestration ------------------------ #
 
 async def ensure_context(browser: Browser) -> BrowserContext:
+    """Create a browser context with locale/timezone tuned for NO and optional storage state."""
+    common_opts = {
+        "locale": "nb-NO",
+        "timezone_id": "Europe/Oslo",
+        "extra_http_headers": {"Accept-Language": "nb, nb-NO;q=0.9, en;q=0.8"},
+        "user_agent": (
+            os.getenv(
+                "USER_AGENT",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+            )
+        ),
+    }
     if STATE_PATH.exists():
-        context = await browser.new_context(storage_state=str(STATE_PATH))
+        context = await browser.new_context(storage_state=str(STATE_PATH), **common_opts)
     else:
-        context = await browser.new_context()
+        context = await browser.new_context(**common_opts)
+    # Optional resource throttling and domain guard
+    async def _route_handler(route, request):  # type: ignore
+        try:
+            url = request.url.lower()
+            resource_type = request.resource_type
+            # Abort heavyweight assets to reduce load/race issues
+            if resource_type in ("image", "media", "font"):
+                return await route.abort()
+            # If the top navigation tries to go to norskgolf.no outside login, let our code handle it later
+            return await route.continue_()
+        except Exception:
+            try:
+                return await route.continue_()
+            except Exception:
+                pass
+    try:
+        await context.route("**/*", _route_handler)
+    except Exception:
+        pass
     return context
 
 
@@ -589,7 +636,19 @@ async def maybe_login(page: Page, user: str, password: str) -> bool:
                 "button[href*='login']",
             ]:
                 if await page.locator(sel).count():
+                    # Some flows open a popup/new tab – capture it if it appears
+                    popup: Optional[Page] = None
+                    try:
+                        page.once("popup", lambda p: globals().update({"__last_popup": p}))
+                    except Exception:
+                        pass
                     await page.locator(sel).first.click()
+                    try:
+                        popup = globals().pop("__last_popup", None)  # type: ignore
+                    except Exception:
+                        popup = None
+                    if popup is not None:
+                        page = popup
                     try:
                         await page.wait_for_load_state('networkidle', timeout=8000)
                     except Exception:
@@ -600,10 +659,14 @@ async def maybe_login(page: Page, user: str, password: str) -> bool:
 
         # Heuristic: look for a password field on the current page (wait a bit)
         try:
-            await page.wait_for_selector("input[type='password'], input[name='password'], #password", timeout=5000)
+            await page.wait_for_selector("input[type='password'], input[name='password'], #password, #gbLoginPassword", timeout=5000)
         except Exception:
             pass
-        has_password = await page.locator("input[type='password']").count() > 0 or await page.locator("#password").count() > 0
+        has_password = (
+            await page.locator("input[type='password']").count() > 0
+            or await page.locator("#password").count() > 0
+            or await page.locator("#gbLoginPassword").count() > 0
+        )
         at_login_url = "login" in page.url.lower() or "signin" in page.url.lower() or "auth" in page.url.lower()
         if not (has_password or at_login_url):
             # Also search iframes for a login form
@@ -615,11 +678,22 @@ async def maybe_login(page: Page, user: str, password: str) -> bool:
             except Exception:
                 pass
             if not has_password:
+                # Last-resort smart login only on first run or when forced
+                if (_ai_login_first_run_enabled() or _ai_login_forced()) and smart_login and user and password:
+                    try:
+                        smart_ok = await smart_login(page, user, password, debug=True)
+                    except Exception:
+                        smart_ok = False
+                    if smart_ok:
+                        return True
                 return False
 
         if not user or not password:
             console.print("[yellow]Login page detected but credentials not provided. Please login manually once.[/yellow]")
             return False
+
+        # AI_LOGIN_ONLY is now handled in login_and_goto_with_retries
+        # This fallback is for when maybe_login is called directly
 
         # Try common selectors (incl. two-step flows)
         email_selectors = [
@@ -628,6 +702,7 @@ async def maybe_login(page: Page, user: str, password: str) -> bool:
             "input[name*='user' i]",
             "input[name='username']",
             "#username",
+            "#gbLoginUsername",
             "input[placeholder*='mail' i]",
             "input[placeholder*='e-post' i]",
             "input[id='i0116']",  # Microsoft AAD style
@@ -636,6 +711,7 @@ async def maybe_login(page: Page, user: str, password: str) -> bool:
             "input[type='password']",
             "input[name*='pass' i]",
             "#password",
+            "#gbLoginPassword",
             "input[id='i0118']",  # Microsoft AAD style
         ]
         login_button_selectors = [
@@ -643,6 +719,8 @@ async def maybe_login(page: Page, user: str, password: str) -> bool:
             "button:has-text('Login')",
             "button:has-text('Logg inn')",
             "button:has-text('Logg på')",
+            "button:has-text('Sign in')",
+            "button[title='Sign in']",
             "input[type='submit']",
             "a:has-text('Sign in')",
         ]
@@ -723,6 +801,15 @@ async def maybe_login(page: Page, user: str, password: str) -> bool:
                     return True
             except Exception:
                 return True
+        else:
+            # Nothing filled; try smart login as a final fallback (first run or forced)
+            if (_ai_login_first_run_enabled() or _ai_login_forced()) and smart_login and user and password:
+                try:
+                    smart_ok = await smart_login(page, user, password, debug=True)
+                except Exception:
+                    smart_ok = False
+                if smart_ok:
+                    return True
     except Exception:
         return False
     return False
@@ -735,7 +822,205 @@ async def save_storage_state(context: BrowserContext) -> None:
         pass
 
 
-async def fetch_times_for_url(context: BrowserContext, url: str, debug: bool = False, assume_logged_in: bool = False) -> Dict[str, List[str]]:
+async def seed_legacy_session(context: BrowserContext, *, user: str, password: str, debug: bool = False) -> bool:
+    """Proactively log in on legacy golfbox.no to establish cookies and avoid reroutes.
+
+    Tries these targets in order:
+    - https://www.golfbox.no/portal/login.asp
+    - https://www.golfbox.no/login.asp
+    """
+    page = await context.new_page()
+    try:
+        for target in [
+            "https://www.golfbox.no/portal/login.asp",
+            "https://www.golfbox.no/login.asp",
+        ]:
+            try:
+                await page.goto(target, wait_until="domcontentloaded")
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=8000)
+                except Exception:
+                    pass
+            except Exception:
+                continue
+
+            # Try both NGF modal IDs and standard IDs
+            try:
+                selectors_email = ["#gbLoginUsername", "#ngfGbModal-email-golfbox", "input[name*='user' i]", "input[name='username']", "input[type='email']"]
+                selectors_pass = ["#gbLoginPassword", "#ngfGbModal-pw-golfbox", "input[type='password']"]
+                filled = False
+                for sel in selectors_email:
+                    if await page.locator(sel).count():
+                        await page.fill(sel, user)
+                        filled = True
+                        break
+                for sel in selectors_pass:
+                    if await page.locator(sel).count():
+                        await page.fill(sel, password)
+                        filled = True
+                        break
+                if filled:
+                    # Submit
+                    for btn in [
+                        "button:has-text('Sign in')",
+                        "button[title='Sign in']",
+                        "button:has-text('Logg inn')",
+                        "input[type='submit']",
+                    ]:
+                        if await page.locator(btn).count():
+                            await page.locator(btn).first.click()
+                            break
+                    try:
+                        await page.wait_for_load_state("networkidle", timeout=8000)
+                    except Exception:
+                        pass
+                    if debug:
+                        _dbg("[login] Seeded legacy session on golfbox.no", True)
+                    await save_storage_state(context)
+                    return True
+            except Exception:
+                continue
+    finally:
+        try:
+            await page.close()
+        except Exception:
+            pass
+    return False
+
+
+async def login_and_goto_with_retries(
+    context: BrowserContext,
+    url: str,
+    *,
+    debug: bool = False,
+    max_attempts: int = 3,
+    assume_logged_in: bool = False,
+) -> Page:
+    """Login at golfbox.golf, then navigate directly to target URL, with retries.
+
+    Protocol per attempt:
+    1) Go to https://golfbox.golf/#/
+    2) Programmatic login using .env credentials
+    3) Navigate directly to target URL
+    4) If redirected to norskgolf.no, retry up to max_attempts
+    """
+    user = os.getenv("GOLFBOX_USER", "").strip()
+    password = os.getenv("GOLFBOX_PASS", "").strip()
+
+    last_error: Exception | None = None
+    for attempt in range(1, max_attempts + 1):
+        page = await context.new_page()
+        try:
+            if debug:
+                _dbg(f"[login] Attempt {attempt}/{max_attempts}", True)
+
+            if not assume_logged_in:
+                try:
+                    await page.goto(APP_URL, wait_until="domcontentloaded")
+                    try:
+                        await page.wait_for_load_state("networkidle", timeout=8000)
+                    except Exception:
+                        pass
+                    if debug:
+                        _dbg("[login] At golfbox.golf; attempting programmatic login", True)
+                    
+                    # If AI_LOGIN_ONLY is enabled, use smart login here instead of maybe_login
+                    if _ai_login_forced() and smart_login:
+                        logged = await smart_login(page, user, password, debug=True)
+                    else:
+                        logged = await maybe_login(page, user, password)
+                    
+                    if logged:
+                        await save_storage_state(context)
+                        if debug:
+                            _dbg("[login] Login successful; storage saved", True)
+                except Exception as e:
+                    last_error = e
+                    if debug:
+                        _dbg(f"[login] Error during login: {e}", True)
+
+            # Directly navigate to target URL
+            if debug:
+                _dbg(f"[login] Navigating to target: {url}", True)
+            # Set Referer to app origin to bias routing
+            await page.goto(url, wait_until="domcontentloaded", referer=APP_ORIGIN)
+            try:
+                await page.wait_for_load_state("networkidle", timeout=8000)
+            except Exception:
+                pass
+
+            # If the target navigation lands on a login page, attempt login here
+            try:
+                user = os.getenv("GOLFBOX_USER", "").strip()
+                password = os.getenv("GOLFBOX_PASS", "").strip()
+                redirected_login = await maybe_login(page, user, password)
+            except Exception:
+                redirected_login = False
+            if redirected_login:
+                try:
+                    await save_storage_state(context)
+                except Exception:
+                    pass
+                if debug:
+                    _dbg("[login] Performed login after target navigation; retrying target URL", True)
+                try:
+                    await page.goto(url, wait_until="domcontentloaded", referer=APP_ORIGIN)
+                    try:
+                        await page.wait_for_load_state("networkidle", timeout=8000)
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+
+            final_url = (page.url or "").lower()
+            if "norskgolf.no" in final_url:
+                if debug:
+                    _dbg(f"[login] Redirected to norskgolf.no; retrying", True)
+                try:
+                    await page.close()
+                except Exception:
+                    pass
+                # Next attempt should not assume an existing login
+                assume_logged_in = False
+                # Try to seed legacy session on golfbox.no and retry immediately once per attempt
+                try:
+                    seeded = await seed_legacy_session(context, user=user, password=password, debug=debug)
+                    if seeded:
+                        page = await context.new_page()
+                        await page.goto(url, wait_until="domcontentloaded")
+                        try:
+                            await page.wait_for_load_state("networkidle", timeout=8000)
+                        except Exception:
+                            pass
+                        return page
+                except Exception:
+                    pass
+                continue
+
+            # Success
+            return page
+        except Exception as e:
+            last_error = e
+            try:
+                await page.close()
+            except Exception:
+                pass
+            continue
+
+    msg = f"Failed to open target after {max_attempts} attempts: {url}"
+    if debug and last_error:
+        _dbg(f"[login] {msg}. Last error: {last_error}", True)
+    raise RuntimeError(msg)
+
+
+async def fetch_times_for_url(
+    context: BrowserContext,
+    url: str,
+    debug: bool = False,
+    assume_logged_in: bool = False,
+    *,
+    use_aria: bool = True,
+) -> Dict[str, List[str]]:
     page = await context.new_page()
     try:
         # 1) Optionally visit app to refresh/validate session
@@ -760,9 +1045,15 @@ async def fetch_times_for_url(context: BrowserContext, url: str, debug: bool = F
                 await save_storage_state(context)
                 _dbg("Login successful, storage state saved", debug)
 
-        # 2) Navigate to the legacy grid target
-        _dbg(f"Navigating to grid: {url}", debug)
-        await page.goto(url, wait_until="domcontentloaded")
+        # Now navigate to the legacy grid target via strict login flow with retries if needed
+        try:
+            # Close this page; use strict helper to create a fresh page and navigate
+            await page.close()
+        except Exception:
+            pass
+        page = await login_and_goto_with_retries(
+            context, url, debug=debug, max_attempts=3, assume_logged_in=True
+        )
         # Wait for grid to render (either table grid or tile grid)
         try:
             await page.wait_for_selector("div.hour, table", timeout=10000)
@@ -775,18 +1066,24 @@ async def fetch_times_for_url(context: BrowserContext, url: str, debug: bool = F
         if redirected_login:
             await save_storage_state(context)
             _dbg("Redirected to login; re-visiting grid", debug)
+            try:
+                _dbg("Re-seeding legacy session via Starttidsbestilling after login…", debug)
+                await navigate_to_starttidsbestilling(page)
+            except Exception:
+                pass
             await page.goto(url, wait_until="domcontentloaded")
             try:
                 await page.wait_for_selector("div.hour, table", timeout=10000)
             except Exception:
                 pass
 
-        # Attempt parsing by ARIA first
-        _dbg("Parsing ARIA…", debug)
-        aria = await parse_by_aria(page, debug=debug)
-        if aria:
-            _dbg(f"ARIA found {sum(len(v) for v in aria.values())} slots", debug)
-            return aria
+        # Attempt parsing by ARIA first (optional)
+        if use_aria:
+            _dbg("Parsing ARIA…", debug)
+            aria = await parse_by_aria(page, debug=debug)
+            if aria:
+                _dbg(f"ARIA found {sum(len(v) for v in aria.values())} slots", debug)
+                return aria
 
         # Fallback to HTML heuristic parser
         _dbg("Falling back to HTML parse…", debug)
@@ -805,6 +1102,30 @@ async def fetch_times_for_url(context: BrowserContext, url: str, debug: bool = F
                 pass
 
         return parsed
+    finally:
+        try:
+            await page.close()
+        except Exception:
+            pass
+
+
+async def fetch_player_counts_for_url(
+    context: BrowserContext,
+    url: str,
+    debug: bool = False,
+    assume_logged_in: bool = False,
+    parent_selector: str = ".d-flex.grid-row.w-100",
+) -> Dict[str, int]:
+    """Navigate to the URL (with optional login) and return HH:MM -> players count."""
+    # Strict login + navigate with retries
+    page = await login_and_goto_with_retries(
+        context, url, debug=debug, max_attempts=3, assume_logged_in=assume_logged_in
+    )
+    try:
+        counts = await count_players_per_tee_time(page, parent_selector=parent_selector)
+        if debug:
+            _dbg(f"Player counts parsed: {len(counts)} entries", debug)
+        return counts
     finally:
         try:
             await page.close()
@@ -1030,7 +1351,10 @@ async def run_loop(grid_urls: List[str], headless: bool, check_interval: int, ji
     detector = ChangeDetector(persist=persist_notified)
 
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch(headless=headless)
+        # Allow extra Chromium flags through env (e.g., --lang=nb-NO)
+        launch_args = os.getenv("CHROMIUM_ARGS", "").strip()
+        args = [a for a in re.split(r"\s+", launch_args) if a]
+        browser = await pw.chromium.launch(headless=headless, args=args or None)
         context = await ensure_context(browser)
         console.print(f"Chromium launched (headless={headless}). Checking {len(grid_urls)} URL(s).", style="green")
         # Pre-run summary
