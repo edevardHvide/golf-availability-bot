@@ -17,6 +17,17 @@ from rich.text import Text
 from rich import box
 
 from facilities import facilities
+from golfbot.core.availability import fetch_available_tee_times as fetch_available_tee_times_core
+from golfbot.scraping.requests_client import (
+    ensure_session as _ensure_session_http,
+    login_to_golfbox as _login_to_golfbox_http,
+    apply_manual_cookies as _apply_manual_cookies_http,
+)
+
+# Bridge aliases to keep existing function names used below
+_ensure_session = _ensure_session_http
+login_to_golfbox = _login_to_golfbox_http
+_apply_manual_cookies = _apply_manual_cookies_http
 
 # Initialize rich console
 console = Console()
@@ -487,160 +498,16 @@ def fetch_available_tee_times(
     debug: bool = False,
 ):
     """Fetch available tee times for a specific golf course and date."""
-    sess = _ensure_session(session)
-    
-    # If a GolfBox legacy grid URL is provided for this course, try it first
-    if grid_overrides:
-        for k, url in grid_overrides.items():
-            if k.lower() == course_name.lower() and url:
-                grid_times = _fetch_golfbox_grid(sess, url, target_date, debug=debug)
-                if grid_times:
-                    return grid_times
-
-    try:
-        course_id = resolve_golf_course_id(sess, course_name, overrides=overrides)
-    except RuntimeError:
-        # If resolution fails and we have credentials, try logging in then retry once
-        if email and password and login_to_golfbox(sess, email, password):
-            course_id = resolve_golf_course_id(sess, course_name, overrides=overrides)
-        else:
-            raise
-    
-    date_str = target_date.strftime("%Y-%m-%d")
-    
-    # Try different possible booking/schedule URLs for golfbox.golf
-    possible_urls = [
-        f"https://golfbox.golf/api/teetimes?courseId={course_id}&date={date_str}",
-        f"https://golfbox.golf/booking/schedule?courseId={course_id}&date={date_str}",
-        f"https://golfbox.golf/course/{course_id}/booking?date={date_str}",
-        f"https://golfbox.golf/teetimes?course={course_id}&date={date_str}",
-        f"https://golfbox.golf/booking?courseId={course_id}&date={date_str}",
-    ]
-    
-    # Add cache-busting param
-    timestamp = str(int(time.time() * 1000))
-    
-    # Request headers to mimic a real browser
-    req_headers = {
-        "X-Requested-With": "XMLHttpRequest",
-        "Accept": "text/html, application/json, */*; q=0.01",
-        "Referer": "https://golfbox.golf/#/",
-    }
-    
-    response = None
-    for url in possible_urls:
-        try:
-            params = {"_": timestamp}
-            response = sess.get(url, params=params, headers=req_headers, timeout=10)
-            response.raise_for_status()
-            
-            # Check if we got meaningful content
-            if len(response.text) > 100 and "error" not in response.text.lower():
-                break
-                
-        except Exception as e:
-            if debug:
-                console.print(f"[dim red]Failed to fetch {url}: {e}[/dim red]")
-            continue
-    
-    if not response or response.status_code != 200:
-        raise RuntimeError(f"Unable to fetch tee times for '{course_name}' on {date_str}")
-
-    # Parse the content using BeautifulSoup
-    soup = BeautifulSoup(response.text, "html.parser")
-
-    # Optionally dump HTML for inspection
-    if debug:
-        try:
-            out_dir = os.path.join(os.getcwd(), "debug_html")
-            os.makedirs(out_dir, exist_ok=True)
-            safe_course = re.sub(r"[^a-z0-9]+", "-", course_name.lower())
-            out_path = os.path.join(
-                out_dir, f"teetimes-{safe_course}-{date_str}.html"
-            )
-            with open(out_path, "w", encoding="utf-8") as f:
-                f.write(response.text)
-            console.print(f"[dim]Saved HTML → {out_path}[/dim]")
-        except Exception:
-            pass
-
-    # Detect if we got redirected to login or received a login form
-    if "login" in str(response.url).lower() or soup.find("form", attrs={"action": re.compile(r"login", re.I)}):
-        raise RuntimeError(
-            "Login required or session expired while fetching tee times"
-        )
-
-    # Search for elements representing available tee times
-    # Common patterns for golf booking systems
-    available_times = soup.select(
-        ".available-time, .tee-time.available, .booking-slot.free, .time-slot.available, .teetime.bookable"
-    ) or soup.find_all(
-        lambda t: t.name in ("div", "td", "li", "button") 
-            and t.has_attr("class")
-        and any(cls in str(t.get("class", [])).lower() for cls in ["available", "free", "bookable", "open"])
+    return fetch_available_tee_times_core(
+        course_name,
+        target_date,
+        session=session,
+        overrides=overrides,
+        grid_overrides=grid_overrides,
+        email=email,
+        password=password,
+        debug=debug,
     )
-
-    # If no direct matches, look for booking buttons/links
-    if not available_times:
-        booking_links = soup.select('a[href*="book"], button[onclick*="book"], .book-button, .booking-btn')
-        available_times = []
-        for link in booking_links:
-            parent = link.find_parent(["div", "td", "li"]) or link
-            if parent not in available_times:
-                available_times.append(parent)
-
-    # Create a dictionary to group tee times
-    tee_times_dict = {}
-
-    for time_element in available_times:
-        # Extract details from various attributes or inner text
-        details = (
-            time_element.get("title")
-            or time_element.get("data-time")
-            or time_element.get("data-teetime")
-            or time_element.get("data-original-title")
-            or ""
-        )
-        if not details:
-            details = time_element.get_text(" ", strip=True)
-
-        # Normalize breaks and whitespace
-        normalized = (
-            details.replace("<br>", "\n")
-            .replace("<br/>", "\n")
-            .replace("<br />", "\n")
-        )
-        parts = [p.strip() for p in re.split(r"\n|\s{2,}|<br\s*/?>", normalized) if p.strip()]
-
-        # Look for time patterns (e.g., "14:30", "2:30 PM")
-        time_pattern = re.compile(r"\b(\d{1,2}):(\d{2})\b")
-        time_match = None
-        course_info = "Standard"
-        
-        for part in parts:
-            if not time_match:
-                match = time_pattern.search(part)
-                if match:
-                    time_match = match.group(0)
-            
-            # Look for course/tee information
-            if any(keyword in part.lower() for keyword in ["tee", "course", "hole", "9", "18"]):
-                course_info = part
-
-        if time_match:
-            if time_match in tee_times_dict:
-                tee_times_dict[time_match].append(course_info)
-        else:
-                tee_times_dict[time_match] = [course_info]
-
-    # Return the tee times dictionary (empty if no times available)
-    if debug:
-        total = sum(len(v) for v in tee_times_dict.values())
-        console.print(
-            f"[dim]{course_name.capitalize()} {target_date}: parsed {len(tee_times_dict)} tee times, {total} slots[/dim]"
-        )
-    
-    return tee_times_dict
 
 
 def get_date_range(days_ahead: int = 2, start_date: datetime.date | None = None):
