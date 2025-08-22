@@ -2,13 +2,10 @@
 """Golf Availability Monitor - Main monitoring script for multiple courses.
 
 Environment Variables:
-    GOLFBOX_EMAIL: (optional) Email for automatic login to golfbox.golf
-    GOLFBOX_PASSWORD: (optional) Password for automatic login to golfbox.golf
     GOLFBOX_GRID_URL: Comma-separated URLs to monitor
     GRID_LABELS: Comma-separated names for the courses
     
-The script will save login session cookies to 'golfbox_session.json' for reuse.
-If automatic login credentials are not provided, a browser window will open for manual login.
+A browser window will open for manual login to golfbox.golf.
 """
 
 import asyncio
@@ -31,30 +28,7 @@ from golf_utils import send_email_notification, rewrite_url_for_day
 load_dotenv(override=True)
 console = Console()
 
-COOKIES_FILE = "golfbox_session.json"
-
-async def save_cookies(context: BrowserContext):
-    """Save browser cookies to file for reuse."""
-    try:
-        cookies = await context.cookies()
-        with open(COOKIES_FILE, 'w') as f:
-            json.dump(cookies, f)
-        console.print("Login session saved for future use", style="green")
-    except Exception as e:
-        console.print(f"Warning: Could not save session: {e}", style="yellow")
-
-async def load_cookies(context: BrowserContext) -> bool:
-    """Load saved cookies into browser context."""
-    try:
-        if os.path.exists(COOKIES_FILE):
-            with open(COOKIES_FILE, 'r') as f:
-                cookies = json.load(f)
-            await context.add_cookies(cookies)
-            console.print("Loaded saved login session", style="green")
-            return True
-    except Exception as e:
-        console.print(f"Could not load saved session: {e}", style="yellow")
-    return False
+# No longer using saved sessions
 
 async def check_login_status(page: Page) -> bool:
     """Check if user is logged in to golfbox.golf."""
@@ -111,115 +85,37 @@ async def check_login_status(page: Page) -> bool:
         return False
 
 async def automatic_login(playwright_instance, context: BrowserContext) -> bool:
-    """Attempt automatic login using saved session or prompt for manual login if needed."""
-    # First try to load saved cookies
-    await load_cookies(context)
+    """Open browser for manual login."""
+    console.print("Opening browser for manual login...", style="yellow")
     
-    # Test if the saved session is still valid
-    page = await context.new_page()
     try:
-        console.print("Testing saved login session...", style="cyan")
-        await page.goto("https://golfbox.golf/#/", wait_until="domcontentloaded")
+        # Launch a visible browser for manual login
+        manual_browser = await playwright_instance.chromium.launch(headless=False)
+        manual_context = await manual_browser.new_context()
+        manual_page = await manual_context.new_page()
         
-        if await check_login_status(page):
-            console.print("Saved session is valid - proceeding with monitoring", style="green")
-            await page.close()
-            return True
+        await manual_page.goto("https://golfbox.golf/#/", wait_until="domcontentloaded")
         
-        # If saved session doesn't work or wasn't loaded, try manual login
-        console.print("Saved session invalid or not found. Manual login required.", style="yellow")
+        console.print("Please log in manually in the browser window.", style="cyan")
+        console.print("Waiting for login completion...", style="yellow")
         
-        # Check if credentials are in environment
-        email = os.getenv("GOLFBOX_EMAIL", "").strip()
-        password = os.getenv("GOLFBOX_PASSWORD", "").strip()
-        
-        if email and password:
-            console.print("Attempting automatic login with credentials from environment...", style="cyan")
-            try:
-                # Try to find and fill login form
-                await page.fill("input[type='email']", email)
-                await page.fill("input[type='password']", password)
-                
-                # Click login button
-                login_button_selectors = [
-                    "button[type='submit']",
-                    "text=Sign In",
-                    "text=Login", 
-                    "text=Log In",
-                    ".login-button",
-                    "#login-button"
-                ]
-                
-                for selector in login_button_selectors:
-                    try:
-                        await page.click(selector)
-                        break
-                    except Exception:
-                        continue
-                
-                # Wait for login to complete
-                await page.wait_for_timeout(3000)
-                
-                if await check_login_status(page):
-                    console.print("Automatic login successful!", style="green")
-                    await save_cookies(context)
-                    await page.close()
-                    return True
-                else:
-                    console.print("Automatic login failed", style="red")
-                    
-            except Exception as e:
-                console.print(f"Automatic login error: {e}", style="red")
-        
-        # Fall back to manual login
-        console.print("Opening browser for manual login...", style="yellow")
-        
-        try:
-            # Launch a separate visible browser for manual login
-            console.print("Launching visible browser...", style="dim")
-            manual_browser = await playwright_instance.chromium.launch(headless=False)
-            manual_context = await manual_browser.new_context()
-            manual_page = await manual_context.new_page()
-            
-            console.print("Navigating to golfbox.golf...", style="dim")
-            await manual_page.goto("https://golfbox.golf/#/", wait_until="domcontentloaded")
-            
-            console.print("Browser opened. Waiting for you to log in...", style="yellow")
-            console.print("Please log in manually in the browser window that just opened.", style="cyan")
-            
-            # Wait for login to be completed (check periodically)
-            login_completed = False
-            for attempt in range(60):  # Wait up to 5 minutes
-                await manual_page.wait_for_timeout(5000)  # Check every 5 seconds
-                if await check_login_status(manual_page):
-                    login_completed = True
-                    break
-                if attempt % 6 == 0:  # Show message every 30 seconds
-                    console.print(f"Still waiting for login... ({attempt + 1}/60 - {5-attempt//12} minutes remaining)", style="dim")
-            
-            if login_completed:
-                console.print("Manual login detected!", style="green")
-                # Copy cookies from manual browser to main context
+        # Wait for login to be completed (check every 2 seconds)
+        for attempt in range(150):  # Wait up to 5 minutes
+            await manual_page.wait_for_timeout(2000)
+            if await check_login_status(manual_page):
+                console.print("Login successful!", style="green")
+                # Copy cookies to main context
                 cookies = await manual_context.cookies()
                 await context.add_cookies(cookies)
-                await save_cookies(context)
                 await manual_browser.close()
-                await page.close()
                 return True
-            else:
-                console.print("Login timeout - please ensure you're logged in", style="red")
-                await manual_browser.close()
-                await page.close()
-                return False
-                
-        except Exception as e:
-            console.print(f"Error opening manual login browser: {e}", style="red")
-            await page.close()
-            return False
+        
+        console.print("Login timeout", style="red")
+        await manual_browser.close()
+        return False
             
     except Exception as e:
-        console.print(f"Login process error: {e}", style="red")
-        await page.close()
+        console.print(f"Login error: {e}", style="red")
         return False
 
 def parse_time_window(time_str: str) -> tuple[int, int]:
@@ -238,6 +134,26 @@ def time_in_window(time_str: str, window: tuple[int, int]) -> bool:
         h, m = map(int, time_str.split(':'))
         minutes = h * 60 + m
         return window[0] <= minutes <= window[1]
+    except Exception:
+        return False
+
+def time_has_passed(time_str: str, target_date: datetime.date) -> bool:
+    """Check if a time has already passed for the given date."""
+    try:
+        # Only filter for today - future dates are always valid
+        if target_date != datetime.date.today():
+            return False
+            
+        h, m = map(int, time_str.split(':'))
+        time_minutes = h * 60 + m
+        
+        # Get current time in minutes
+        now = datetime.datetime.now()
+        current_minutes = now.hour * 60 + now.minute
+        
+        # Add a small buffer (e.g., 15 minutes) to account for booking time
+        buffer_minutes = 15
+        return time_minutes <= (current_minutes + buffer_minutes)
     except Exception:
         return False
 
@@ -276,7 +192,8 @@ async def check_course_availability(context: BrowserContext, url: str, course_na
         # Filter times within window and calculate capacity
         available_times = {}
         for time_str, labels in times.items():
-            if time_in_window(time_str, time_window):
+            # Skip times that are within window but have already passed for today
+            if time_in_window(time_str, time_window) and not time_has_passed(time_str, target_date):
                 total_capacity = sum(parse_capacity_from_label(lbl) for lbl in labels)
                 if total_capacity >= min_players:
                     available_times[time_str] = total_capacity
@@ -306,6 +223,8 @@ async def main():
                        help="Check interval in seconds (default: 300 = 5 minutes)")
     parser.add_argument("--players", type=int, default=1, 
                        help="Minimum number of available slots required (default: 1)")
+    parser.add_argument("--days", type=int, default=4,
+                       help="Number of days to check from today (default: 4)")
     args = parser.parse_args()
     
     # Parse time window
@@ -388,9 +307,9 @@ async def main():
             while True:
                 cycle += 1
                 
-                # Check current day + next 3 days (4 days total)
+                # Check current day + next (days-1) days
                 today = datetime.date.today()
-                dates_to_check = [today + datetime.timedelta(days=i) for i in range(4)]
+                dates_to_check = [today + datetime.timedelta(days=i) for i in range(args.days)]
                 
                 console.print(f"\n🔄 Cycle {cycle} - {datetime.datetime.now().strftime('%H:%M:%S')}")
                 console.print(f"Checking availability for {len(dates_to_check)} days: {dates_to_check[0]} to {dates_to_check[-1]}")
