@@ -91,22 +91,6 @@ def parse_grid_html(html: str) -> Dict[str, List[str]]:
 
         tiles = soup.select("div.hour, .booking-slot, .time-slot")
 
-        def _read_available_from_text(text: str) -> int | None:
-            if not text:
-                return None
-            try:
-                low = text.lower()
-                # Common phrases in NO/EN for availability
-                if any(k in low for k in ["ledig", "ledige", "available", "free", "spots", "plass", "plasser"]):
-                    m = re.search(r"(\d+)", low)
-                    if m:
-                        n = int(m.group(1))
-                        if n >= 0:
-                            return n
-            except Exception:
-                return None
-            return None
-
         def _read_capacity_attr(el) -> int | None:
             try:
                 if not el:
@@ -184,22 +168,6 @@ def parse_grid_html(html: str) -> Dict[str, List[str]]:
                     if players == 0:
                         players = len(tile.select("img[src*='bookinggrid/greenfee']"))
 
-                # Try to read explicit available spots from attributes/text first
-                available_from_text: int | None = None
-                # aria-label/title on tile
-                for key in ("aria-label", "title", "data-original-title"):
-                    val = tile.get(key)
-                    if val:
-                        available_from_text = _read_available_from_text(str(val))
-                        if available_from_text is not None:
-                            break
-                if available_from_text is None:
-                    # Check child clickable elements
-                    clickable = tile.find(["a", "button"], string=True) or tile.find(["a", "button"]) or tile
-                    if clickable:
-                        cand = clickable.get("aria-label") or clickable.get("title") or clickable.get_text(" ", strip=True)
-                        available_from_text = _read_available_from_text(str(cand) if cand else "")
-
                 cap_attr = _read_capacity_attr(tile) or _read_capacity_attr(flight) or _read_capacity_attr(tile.find(class_=re.compile(r"\bitem\b", re.I)) if tile else None)
                 if cap_attr and cap_attr > 0:
                     capacity = cap_attr
@@ -208,24 +176,21 @@ def parse_grid_html(html: str) -> Dict[str, List[str]]:
                 else:
                     capacity = env_capacity
 
-                if available_from_text is not None:
-                    available = max(0, int(available_from_text))
+                classes = " ".join(tile.get("class", [])).lower()
+                if "full" in classes:
+                    available = 0
+                elif "free" in classes and players == 0:
+                    available = capacity
                 else:
-                    classes = " ".join(tile.get("class", [])).lower()
-                    if "full" in classes:
-                        available = 0
-                    elif "free" in classes and players == 0:
-                        available = capacity
-                    else:
-                        available = max(0, capacity - players)
+                    available = max(0, capacity - players)
 
                 if available > 0:
                     current = tile_total.get(time_text, 0)
-                    tile_total[time_text] = current + available
+                    tile_total[time_text] = max(current, available)
             except Exception:
                 # Best-effort fallback: assume env capacity free for this tile
                 current = tile_total.get(time_text, 0)
-                tile_total[time_text] = current + (env_capacity if 'env_capacity' in locals() else 4)
+                tile_total[time_text] = max(current, (env_capacity if 'env_capacity' in locals() else 4))
 
         if tile_total:
             simplified: Dict[str, List[str]] = {}
