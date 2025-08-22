@@ -1,25 +1,226 @@
 #!/usr/bin/env python3
-"""Golf Availability Monitor - Main monitoring script for multiple courses."""
+"""Golf Availability Monitor - Main monitoring script for multiple courses.
+
+Environment Variables:
+    GOLFBOX_EMAIL: (optional) Email for automatic login to golfbox.golf
+    GOLFBOX_PASSWORD: (optional) Password for automatic login to golfbox.golf
+    GOLFBOX_GRID_URL: Comma-separated URLs to monitor
+    GRID_LABELS: Comma-separated names for the courses
+    
+The script will save login session cookies to 'golfbox_session.json' for reuse.
+If automatic login credentials are not provided, a browser window will open for manual login.
+"""
 
 import asyncio
 import argparse
 import datetime
+import json
 import os
 import re
-from typing import Dict, List
+from typing import Dict
 from dotenv import load_dotenv
 
-from playwright.async_api import async_playwright, BrowserContext
+from playwright.async_api import async_playwright, BrowserContext, Page
 from rich.console import Console
 from rich.table import Table
 
 from golfbot.grid_parser import parse_grid_html
-from check_availability import send_email_notification
-from playwright_runner import _rewrite_url_for_day
+from golf_utils import send_email_notification, rewrite_url_for_day
 
 # Load environment (override=True to ensure .env values are used)
 load_dotenv(override=True)
 console = Console()
+
+COOKIES_FILE = "golfbox_session.json"
+
+async def save_cookies(context: BrowserContext):
+    """Save browser cookies to file for reuse."""
+    try:
+        cookies = await context.cookies()
+        with open(COOKIES_FILE, 'w') as f:
+            json.dump(cookies, f)
+        console.print("Login session saved for future use", style="green")
+    except Exception as e:
+        console.print(f"Warning: Could not save session: {e}", style="yellow")
+
+async def load_cookies(context: BrowserContext) -> bool:
+    """Load saved cookies into browser context."""
+    try:
+        if os.path.exists(COOKIES_FILE):
+            with open(COOKIES_FILE, 'r') as f:
+                cookies = json.load(f)
+            await context.add_cookies(cookies)
+            console.print("Loaded saved login session", style="green")
+            return True
+    except Exception as e:
+        console.print(f"Could not load saved session: {e}", style="yellow")
+    return False
+
+async def check_login_status(page: Page) -> bool:
+    """Check if user is logged in to golfbox.golf."""
+    try:
+        # Wait for page to load
+        await page.wait_for_load_state("domcontentloaded", timeout=10000)
+        await page.wait_for_timeout(2000)  # Additional wait for JS to execute
+        
+        # Check for login indicators - adjust these selectors based on the actual site
+        # Common indicators: profile menu, logout button, user name, etc.
+        login_indicators = [
+            "text=Logout",
+            "text=Log out", 
+            "text=My Profile",
+            "text=Settings",
+            "[data-testid='user-menu']",
+            ".user-menu",
+            ".profile-menu"
+        ]
+        
+        for selector in login_indicators:
+            try:
+                element = await page.wait_for_selector(selector, timeout=3000)
+                if element:
+                    console.print("User is logged in", style="green")
+                    return True
+            except Exception:
+                continue
+        
+        # If no login indicators found, check if login form is present
+        login_form_selectors = [
+            "input[type='email']",
+            "input[type='password']", 
+            "text=Sign In",
+            "text=Login",
+            "text=Log In"
+        ]
+        
+        for selector in login_form_selectors:
+            try:
+                element = await page.wait_for_selector(selector, timeout=3000)
+                if element:
+                    console.print("Login form detected - user needs to log in", style="yellow")
+                    return False
+            except Exception:
+                continue
+        
+        # Default assumption if we can't determine status
+        console.print("Login status unclear - assuming logged in", style="yellow")
+        return True
+        
+    except Exception as e:
+        console.print(f"Error checking login status: {e}", style="yellow")
+        return False
+
+async def automatic_login(playwright_instance, context: BrowserContext) -> bool:
+    """Attempt automatic login using saved session or prompt for manual login if needed."""
+    # First try to load saved cookies
+    await load_cookies(context)
+    
+    # Test if the saved session is still valid
+    page = await context.new_page()
+    try:
+        console.print("Testing saved login session...", style="cyan")
+        await page.goto("https://golfbox.golf/#/", wait_until="domcontentloaded")
+        
+        if await check_login_status(page):
+            console.print("Saved session is valid - proceeding with monitoring", style="green")
+            await page.close()
+            return True
+        
+        # If saved session doesn't work or wasn't loaded, try manual login
+        console.print("Saved session invalid or not found. Manual login required.", style="yellow")
+        
+        # Check if credentials are in environment
+        email = os.getenv("GOLFBOX_EMAIL", "").strip()
+        password = os.getenv("GOLFBOX_PASSWORD", "").strip()
+        
+        if email and password:
+            console.print("Attempting automatic login with credentials from environment...", style="cyan")
+            try:
+                # Try to find and fill login form
+                await page.fill("input[type='email']", email)
+                await page.fill("input[type='password']", password)
+                
+                # Click login button
+                login_button_selectors = [
+                    "button[type='submit']",
+                    "text=Sign In",
+                    "text=Login", 
+                    "text=Log In",
+                    ".login-button",
+                    "#login-button"
+                ]
+                
+                for selector in login_button_selectors:
+                    try:
+                        await page.click(selector)
+                        break
+                    except Exception:
+                        continue
+                
+                # Wait for login to complete
+                await page.wait_for_timeout(3000)
+                
+                if await check_login_status(page):
+                    console.print("Automatic login successful!", style="green")
+                    await save_cookies(context)
+                    await page.close()
+                    return True
+                else:
+                    console.print("Automatic login failed", style="red")
+                    
+            except Exception as e:
+                console.print(f"Automatic login error: {e}", style="red")
+        
+        # Fall back to manual login
+        console.print("Opening browser for manual login...", style="yellow")
+        
+        try:
+            # Launch a separate visible browser for manual login
+            console.print("Launching visible browser...", style="dim")
+            manual_browser = await playwright_instance.chromium.launch(headless=False)
+            manual_context = await manual_browser.new_context()
+            manual_page = await manual_context.new_page()
+            
+            console.print("Navigating to golfbox.golf...", style="dim")
+            await manual_page.goto("https://golfbox.golf/#/", wait_until="domcontentloaded")
+            
+            console.print("Browser opened. Waiting for you to log in...", style="yellow")
+            console.print("Please log in manually in the browser window that just opened.", style="cyan")
+            
+            # Wait for login to be completed (check periodically)
+            login_completed = False
+            for attempt in range(60):  # Wait up to 5 minutes
+                await manual_page.wait_for_timeout(5000)  # Check every 5 seconds
+                if await check_login_status(manual_page):
+                    login_completed = True
+                    break
+                if attempt % 6 == 0:  # Show message every 30 seconds
+                    console.print(f"Still waiting for login... ({attempt + 1}/60 - {5-attempt//12} minutes remaining)", style="dim")
+            
+            if login_completed:
+                console.print("Manual login detected!", style="green")
+                # Copy cookies from manual browser to main context
+                cookies = await manual_context.cookies()
+                await context.add_cookies(cookies)
+                await save_cookies(context)
+                await manual_browser.close()
+                await page.close()
+                return True
+            else:
+                console.print("Login timeout - please ensure you're logged in", style="red")
+                await manual_browser.close()
+                await page.close()
+                return False
+                
+        except Exception as e:
+            console.print(f"Error opening manual login browser: {e}", style="red")
+            await page.close()
+            return False
+            
+    except Exception as e:
+        console.print(f"Login process error: {e}", style="red")
+        await page.close()
+        return False
 
 def parse_time_window(time_str: str) -> tuple[int, int]:
     """Parse time window like '08:00-17:00' into (start_minutes, end_minutes)."""
@@ -28,7 +229,7 @@ def parse_time_window(time_str: str) -> tuple[int, int]:
         start_h, start_m = map(int, start_str.split(':'))
         end_h, end_m = map(int, end_str.split(':'))
         return (start_h * 60 + start_m, end_h * 60 + end_m)
-    except:
+    except Exception:
         raise ValueError(f"Invalid time window format: {time_str}. Use HH:MM-HH:MM")
 
 def time_in_window(time_str: str, window: tuple[int, int]) -> bool:
@@ -37,7 +238,7 @@ def time_in_window(time_str: str, window: tuple[int, int]) -> bool:
         h, m = map(int, time_str.split(':'))
         minutes = h * 60 + m
         return window[0] <= minutes <= window[1]
-    except:
+    except Exception:
         return False
 
 def parse_capacity_from_label(label: str) -> int:
@@ -50,7 +251,7 @@ def parse_capacity_from_label(label: str) -> int:
             pass
     return 0
 
-async def check_course_availability(context: BrowserContext, url: str, course_name: str, target_date: datetime.date, time_window: tuple[int, int]) -> Dict[str, int]:
+async def check_course_availability(context: BrowserContext, url: str, course_name: str, target_date: datetime.date, time_window: tuple[int, int], min_players: int = 1) -> Dict[str, int]:
     """Check availability for a single course and return times within window."""
     page = None
     try:
@@ -65,7 +266,7 @@ async def check_course_availability(context: BrowserContext, url: str, course_na
         # Wait briefly for grid to load
         try:
             await page.wait_for_selector("div.hour, table", timeout=10000)
-        except:
+        except Exception:
             pass
         
         # Get HTML and parse
@@ -77,7 +278,7 @@ async def check_course_availability(context: BrowserContext, url: str, course_na
         for time_str, labels in times.items():
             if time_in_window(time_str, time_window):
                 total_capacity = sum(parse_capacity_from_label(lbl) for lbl in labels)
-                if total_capacity > 0:
+                if total_capacity >= min_players:
                     available_times[time_str] = total_capacity
         
         if available_times:
@@ -103,6 +304,8 @@ async def main():
                        help="Time window to monitor (default: 08:00-17:00)")
     parser.add_argument("--interval", type=int, default=300, 
                        help="Check interval in seconds (default: 300 = 5 minutes)")
+    parser.add_argument("--players", type=int, default=1, 
+                       help="Minimum number of available slots required (default: 1)")
     args = parser.parse_args()
     
     # Parse time window
@@ -150,7 +353,7 @@ async def main():
     
     console.print(f"Debug - Final labels count: {len(labels)}, URLs count: {len(urls)}", style="dim")
     
-    console.print(f"🏌️ Golf Availability Monitor", style="bold blue")
+    console.print("🏌️ Golf Availability Monitor", style="bold blue")
     console.print(f"Monitoring {len(urls)} courses", style="blue")
     console.print(f"Time window: {window_str}", style="blue")
     console.print(f"Check interval: {args.interval} seconds", style="blue")
@@ -171,56 +374,23 @@ async def main():
         context = await browser.new_context()
         
         try:
-            # Always offer manual login at startup
-            console.print("Opening golfbox.golf for authentication...", style="yellow")
+            # Attempt automatic login
+            console.print("🔐 Authenticating with golfbox.golf...", style="cyan")
             
-            # Launch a visible browser for login
-            login_browser = await pw.chromium.launch(headless=False)
-            login_page = await login_browser.new_page()
-            await login_page.goto("https://golfbox.golf/#/", wait_until="domcontentloaded")
+            login_success = await automatic_login(pw, context)
+            if not login_success:
+                console.print("Authentication failed. Exiting.", style="red")
+                return
             
-            console.print("Browser window opened. Please login to golfbox.golf if needed...", style="yellow")
-            console.print("Waiting for login completion (will auto-detect)...", style="dim")
-            
-            # Auto-detect login completion by checking for login indicators
-            logged_in = False
-            for attempt in range(60):  # Wait up to 60 seconds
-                try:
-                    # Check if we're still on a login page or if we're logged in
-                    page_content = await login_page.content()
-                    
-                    # Signs we're logged in: no login forms, presence of logout/profile elements
-                    has_login_form = await login_page.locator("input[type='password'], form[action*='login']").count() > 0
-                    has_logout = "logout" in page_content.lower() or "logg ut" in page_content.lower()
-                    has_profile = "min side" in page_content.lower() or "profile" in page_content.lower()
-                    
-                    if not has_login_form or has_logout or has_profile:
-                        console.print("Login detected! Proceeding...", style="green")
-                        logged_in = True
-                        break
-                        
-                except Exception:
-                    pass
-                
-                await asyncio.sleep(1)  # Check every second
-            
-            if not logged_in:
-                console.print("Login timeout reached. Continuing anyway...", style="yellow")
-            
-            # Copy cookies to main headless context
-            cookies = await login_page.context.cookies()
-            await context.add_cookies(cookies)
-            await login_browser.close()
-            
-            console.print("Authentication session saved. Starting monitoring with headless browser...", style="green")
+            console.print("Authentication successful! Starting monitoring...", style="green")
             
             cycle = 0
             while True:
                 cycle += 1
                 
-                # Check today and tomorrow only (for testing)
+                # Check current day + next 3 days (4 days total)
                 today = datetime.date.today()
-                dates_to_check = [today, today + datetime.timedelta(days=1)]
+                dates_to_check = [today + datetime.timedelta(days=i) for i in range(4)]
                 
                 console.print(f"\n🔄 Cycle {cycle} - {datetime.datetime.now().strftime('%H:%M:%S')}")
                 console.print(f"Checking availability for {len(dates_to_check)} days: {dates_to_check[0]} to {dates_to_check[-1]}")
@@ -237,9 +407,9 @@ async def main():
                     # Check each course for this date
                     for i, (base_url, label) in enumerate(zip(urls, labels)):
                         # Use the existing URL rewriting logic that handles SelectedDate properly
-                        url = _rewrite_url_for_day(base_url, target_date)
+                        url = rewrite_url_for_day(base_url, target_date)
                         
-                        available_times = await check_course_availability(context, url, label, target_date, time_window)
+                        available_times = await check_course_availability(context, url, label, target_date, time_window, args.players)
                         
                         # Store state with date key
                         state_key = f"{label}_{date_str}"
@@ -273,7 +443,7 @@ async def main():
                             table.add_row(label, times_str)
                             date_total += len(times)
                             total_found += len(times)
-            else:
+                        else:
                             table.add_row(label, "[dim]No availability[/dim]")
                     
                     console.print(table)
@@ -283,7 +453,7 @@ async def main():
                 
                 # Send email for new availability
                 if new_availability:
-                    console.print(f"\n🚨 New availability detected!", style="bold green")
+                    console.print("\n🚨 New availability detected!", style="bold green")
                     for item in new_availability:
                         console.print(f"  • {item}", style="green")
                     
@@ -295,11 +465,11 @@ async def main():
 Time window: {window_str}
 
 New availability:
-""" + "\n".join([f"• {item}" for item in new_availability]) + f"""
+""" + "\n".join([f"• {item}" for item in new_availability]) + """
 
 All current availability:
 """ + "\n".join([f"• {label}: {', '.join([f'{t}({c} spots)' for t, c in times.items()]) if times else 'None'}" 
-                              for label, times in current_state.items()]) + f"""
+                              for label, times in current_state.items()]) + """
 
 Happy golfing! ⛳
 
