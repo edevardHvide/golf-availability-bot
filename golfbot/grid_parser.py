@@ -112,10 +112,26 @@ def parse_grid_html(html: str) -> Dict[str, List[str]]:
 
         for tile in tiles:
             # Skip non-bookable groupings (e.g., tournaments)
+            # But allow golfbox.no tiles which use data-grouping for valid bookings
             try:
                 classes = " ".join(tile.get("class", [])).lower()
-                if ("tournament" in classes) or (tile.get("data-grouping") is not None):
+                grouping = tile.get("data-grouping")
+                
+                # Skip obvious tournament/blocked tiles
+                if "tournament" in classes:
                     continue
+                    
+                # Skip expired times (times that have already passed)
+                if "expired" in classes:
+                    continue
+                    
+                # For golfbox.no: allow data-grouping tiles that aren't explicitly blocked
+                if grouping is not None:
+                    # Allow if it has time content and doesn't look like a tournament
+                    time_div = tile.find(class_=re.compile(r"\btime\b", re.I))
+                    if not time_div or "tournament" in classes:
+                        continue
+                        
             except Exception:
                 pass
 
@@ -177,12 +193,56 @@ def parse_grid_html(html: str) -> Dict[str, List[str]]:
                     capacity = env_capacity
 
                 classes = " ".join(tile.get("class", [])).lower()
-                if "full" in classes:
+                
+                # Golfbox.no specific logic - be more conservative about availability
+                if "expired" in classes:
+                    # Time has passed, not available
+                    available = 0
+                elif "portalclosed" in classes:
+                    # Portal closed for this time
+                    available = 0
+                elif "blocking21" in classes and "hour" in classes:
+                    # This is a standard golfbox.no booking slot
+                    # Check if it has booking content (players already booked)
+                    item_div = tile.find(class_=re.compile(r"\bitem\b", re.I))
+                    
+                    # Default assumption: if we can't determine the exact state,
+                    # be conservative and assume it might not be available
+                    available = 0
+                    
+                    if item_div:
+                        # Count booked players by counting icons/images
+                        booked_players = len(item_div.find_all("img"))
+                        
+                        # Also check for text content that might indicate bookings
+                        item_text = item_div.get_text(strip=True)
+                        
+                        # Check if this slot is clickable (indicates it's bookable)
+                        onclick = tile.get("onclick", "")
+                        is_clickable = "click_gbDefault" in onclick
+                        
+                        if is_clickable and booked_players == 0 and not item_text:
+                            # Clickable with no apparent bookings - likely available
+                            available = capacity
+                        elif booked_players > 0:
+                            # Has bookings, calculate remaining spots
+                            available = max(0, capacity - booked_players)
+                        # else: leave as 0 (conservative default)
+                    else:
+                        # No item div - check if clickable
+                        onclick = tile.get("onclick", "")
+                        if "click_gbDefault" in onclick:
+                            available = capacity
+                elif "full" in classes:
                     available = 0
                 elif "free" in classes and players == 0:
                     available = capacity
-                else:
+                elif "partfree" in classes:
+                    # Partially booked slot - calculate remaining spots
                     available = max(0, capacity - players)
+                else:
+                    # Fallback: be conservative
+                    available = 0
 
                 if available > 0:
                     current = tile_total.get(time_text, 0)

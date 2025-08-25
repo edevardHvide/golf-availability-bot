@@ -171,9 +171,17 @@ async def check_course_availability(context: BrowserContext, url: str, course_na
     page = None
     try:
         console.print(f"  → Checking {course_name} for {target_date.strftime('%Y-%m-%d')}...", style="cyan")
+        console.print(f"    URL: {url}", style="dim")
         
         # Create a new page for this course to avoid navigation conflicts
         page = await context.new_page()
+        
+        # Add extra headers to prevent caching
+        await page.set_extra_http_headers({
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+        })
         
         # Navigate to the course URL
         await page.goto(url, wait_until="domcontentloaded")
@@ -184,9 +192,16 @@ async def check_course_availability(context: BrowserContext, url: str, course_na
         except Exception:
             pass
         
+        # Add a small delay to ensure page is fully loaded
+        await page.wait_for_timeout(2000)
+        
         # Get HTML and parse
         html = await page.content()
         times = parse_grid_html(html)
+        
+        console.print(f"    DEBUG: Raw times found: {len(times)} entries", style="dim")
+        if times:
+            console.print(f"    DEBUG: Sample times: {dict(list(times.items())[:3])}", style="dim")
         
         # Filter times within window and calculate capacity
         available_times = {}
@@ -326,6 +341,9 @@ async def main():
                     for i, (base_url, label) in enumerate(zip(urls, labels)):
                         # Use the existing URL rewriting logic that handles SelectedDate properly
                         url = rewrite_url_for_day(base_url, target_date)
+                        console.print(f"  DEBUG: Course {i+1} - {label}, Date: {date_str}", style="dim")
+                        console.print(f"  DEBUG: Base URL: {base_url[:100]}...", style="dim")
+                        console.print(f"  DEBUG: Rewritten URL: {url[:100]}...", style="dim")
                         
                         available_times = await check_course_availability(context, url, label, target_date, time_window, args.players)
                         

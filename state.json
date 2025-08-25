@@ -1,1 +1,171 @@
-{"cookies": [{"name": "ARRAffinity", "value": "5d884e02b39451f07cbdb38c2958fce6126ccbd2b5534966999b9b35e509de6a", "domain": ".golfbox.golf", "path": "/", "expires": -1, "httpOnly": true, "secure": true, "sameSite": "Lax"}, {"name": "ARRAffinitySameSite", "value": "5d884e02b39451f07cbdb38c2958fce6126ccbd2b5534966999b9b35e509de6a", "domain": ".golfbox.golf", "path": "/", "expires": -1, "httpOnly": true, "secure": true, "sameSite": "None"}, {"name": "ASPUniqueID", "value": "0e7ccdaf%2D1e9a%2D4397%2Da971%2Dff9661bd27d6", "domain": "www.golfbox.no", "path": "/", "expires": -1, "httpOnly": false, "secure": false, "sameSite": "Lax"}, {"name": "ASPSESSIONIDSQTTATAT", "value": "PEBPLHODCJFNHNFMJKPKADDO", "domain": "www.golfbox.no", "path": "/", "expires": -1, "httpOnly": false, "secure": false, "sameSite": "Lax"}, {"name": "cookiePolicy", "value": "/necessary=true/statistics=true/%cookieID=7165241/concentID=0f9b2f84-d10f-43bc-b991-c01ce901c049", "domain": "www.golfbox.no", "path": "/", "expires": 1786960672, "httpOnly": false, "secure": false, "sameSite": "Strict"}, {"name": "cookieTimer_gb", "value": "blank", "domain": "www.golfbox.no", "path": "/", "expires": 1755943075, "httpOnly": false, "secure": false, "sameSite": "Strict"}, {"name": "__utma", "value": "104723990.1512852195.1755856677.1755856677.1755856677.1", "domain": ".golfbox.no", "path": "/", "expires": 1790416676.500805, "httpOnly": false, "secure": false, "sameSite": "Lax"}, {"name": "__utmb", "value": "104723990", "domain": ".golfbox.no", "path": "/", "expires": 1755858494, "httpOnly": false, "secure": false, "sameSite": "Lax"}, {"name": "__utmc", "value": "104723990", "domain": ".golfbox.no", "path": "/", "expires": -1, "httpOnly": false, "secure": false, "sameSite": "Lax"}, {"name": "__utmz", "value": "104723990.1755856677.1.1.utmccn=(direct)|utmcsr=(direct)|utmcmd=(none)", "domain": ".golfbox.no", "path": "/", "expires": 1771624676, "httpOnly": false, "secure": false, "sameSite": "Lax"}, {"name": "BookingGrid", "value": "showExpiredTimes=True", "domain": "www.golfbox.no", "path": "/", "expires": 1787392687.448818, "httpOnly": false, "secure": false, "sameSite": "Lax"}], "origins": [{"origin": "https://golfbox.golf", "localStorage": [{"name": "Language", "value": "\"en-US\""}, {"name": "Country", "value": "{\"Flag\":\"N/NO\",\"Name\":\"Norges Golfforbund\",\"Logo\":\"no\",\"Country\":\"no\",\"CountryName\":\"no\"}"}]}]}
+{
+  "cookies": [
+    {
+      "name": "ARRAffinity",
+      "value": "5d884e02b39451f07cbdb38c2958fce6126ccbd2b5534966999b9b35e509de6a",
+      "domain": ".golfbox.golf",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "ARRAffinitySameSite",
+      "value": "5d884e02b39451f07cbdb38c2958fce6126ccbd2b5534966999b9b35e509de6a",
+      "domain": ".golfbox.golf",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "ASPUniqueID",
+      "value": "0e7ccdaf%2D1e9a%2D4397%2Da971%2Dff9661bd27d6",
+      "domain": "www.golfbox.no",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "ASPSESSIONIDSQTTATAT",
+      "value": "PEBPLHODCJFNHNFMJKPKADDO",
+      "domain": "www.golfbox.no",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "cookiePolicy",
+      "value": "/necessary=true/statistics=true/%cookieID=7165241/concentID=0f9b2f84-d10f-43bc-b991-c01ce901c049",
+      "domain": "www.golfbox.no",
+      "path": "/",
+      "expires": 1786960672,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Strict"
+    },
+    {
+      "name": "cookieTimer_gb",
+      "value": "blank",
+      "domain": "www.golfbox.no",
+      "path": "/",
+      "expires": 1755943075,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Strict"
+    },
+    {
+      "name": "__utma",
+      "value": "104723990.1512852195.1755856677.1755856677.1755856677.1",
+      "domain": ".golfbox.no",
+      "path": "/",
+      "expires": 1790416676.500805,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "__utmb",
+      "value": "104723990",
+      "domain": ".golfbox.no",
+      "path": "/",
+      "expires": 1755858494,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "__utmc",
+      "value": "104723990",
+      "domain": ".golfbox.no",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "__utmz",
+      "value": "104723990.1755856677.1.1.utmccn=(direct)|utmcsr=(direct)|utmcmd=(none)",
+      "domain": ".golfbox.no",
+      "path": "/",
+      "expires": 1771624676,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "BookingGrid",
+      "value": "showExpiredTimes=True",
+      "domain": "www.golfbox.no",
+      "path": "/",
+      "expires": 1787392687.448818,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    }
+  ],
+  "origins": [
+    {
+      "origin": "https://golfbox.golf",
+      "localStorage": [
+        {
+          "name": "Language",
+          "value": "\"en-US\""
+        },
+        {
+          "name": "Country",
+          "value": "{\"Flag\":\"N/NO\",\"Name\":\"Norges Golfforbund\",\"Logo\":\"no\",\"Country\":\"no\",\"CountryName\":\"no\"}"
+        }
+      ]
+    }
+  ],
+  "golfbox_cookies": [
+    {
+      "name": "ARRAffinity",
+      "value": "5d884e02b39451f07cbdb38c2958fce6126ccbd2b5534966999b9b35e509de6a",
+      "domain": ".golfbox.golf",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "ARRAffinitySameSite",
+      "value": "5d884e02b39451f07cbdb38c2958fce6126ccbd2b5534966999b9b35e509de6a",
+      "domain": ".golfbox.golf",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "ASPUniqueID",
+      "value": "86bfb752%2D4a1b%2D48f2%2D998c%2Db5b267aa8942",
+      "domain": "www.golfbox.no",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "ASPSESSIONIDAADCTQDQ",
+      "value": "HKKGNBOBBNMABHDOEHADFONH",
+      "domain": "www.golfbox.no",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    }
+  ]
+}
