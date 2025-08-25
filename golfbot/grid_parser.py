@@ -201,38 +201,9 @@ def parse_grid_html(html: str) -> Dict[str, List[str]]:
                 elif "portalclosed" in classes:
                     # Portal closed for this time
                     available = 0
-                elif "blocking21" in classes and "hour" in classes:
-                    # This is a standard golfbox.no booking slot
-                    # Check if it has booking content (players already booked)
-                    item_div = tile.find(class_=re.compile(r"\bitem\b", re.I))
-                    
-                    # Default assumption: if we can't determine the exact state,
-                    # be conservative and assume it might not be available
+                elif "blocking21" in classes:
+                    # blocking21 means this time slot is blocked/unavailable
                     available = 0
-                    
-                    if item_div:
-                        # Count booked players by counting icons/images
-                        booked_players = len(item_div.find_all("img"))
-                        
-                        # Also check for text content that might indicate bookings
-                        item_text = item_div.get_text(strip=True)
-                        
-                        # Check if this slot is clickable (indicates it's bookable)
-                        onclick = tile.get("onclick", "")
-                        is_clickable = "click_gbDefault" in onclick
-                        
-                        if is_clickable and booked_players == 0 and not item_text:
-                            # Clickable with no apparent bookings - likely available
-                            available = capacity
-                        elif booked_players > 0:
-                            # Has bookings, calculate remaining spots
-                            available = max(0, capacity - booked_players)
-                        # else: leave as 0 (conservative default)
-                    else:
-                        # No item div - check if clickable
-                        onclick = tile.get("onclick", "")
-                        if "click_gbDefault" in onclick:
-                            available = capacity
                 elif "full" in classes:
                     available = 0
                 elif "free" in classes and players == 0:

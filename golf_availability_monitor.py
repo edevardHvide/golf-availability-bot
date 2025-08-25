@@ -397,11 +397,21 @@ async def main():
                     alert_date = dates_to_check[0].strftime('%Y-%m-%d')
                     subject = f"⛳ Golf Availability Alert - {alert_date}"
                     
+                    # Prepare configuration info for email
+                    config_info = {
+                        'courses': len(urls),
+                        'time_window': window_str,
+                        'interval': args.interval,
+                        'min_players': args.players,
+                        'days': args.days
+                    }
+                    
                     send_email_notification(
                         subject=subject, 
                         new_availability=new_availability,
                         all_availability=current_state,
-                        time_window=window_str
+                        time_window=window_str,
+                        config_info=config_info
                     )
                     console.print("Email notification sent!", style="green")
                 

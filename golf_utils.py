@@ -10,9 +10,12 @@ from email.mime.multipart import MIMEMultipart
 from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 
 
-def create_html_email_template(subject: str, new_availability: list, all_availability: dict, time_window: str) -> str:
+def create_html_email_template(subject: str, new_availability: list, all_availability: dict, time_window: str, config_info: dict = None) -> str:
     """Create a beautiful HTML email template for golf availability notifications."""
     current_date = datetime.datetime.now().strftime('%B %d, %Y at %I:%M %p')
+    
+    if config_info is None:
+        config_info = {}
     
     # Group data by date for better organization
     def group_by_date(availability_dict):
@@ -100,54 +103,57 @@ def create_html_email_template(subject: str, new_availability: list, all_availab
         
         new_availability_html += "</div>"
     
-    # Create all availability HTML - structured by date
-    all_availability_html = """
-    <div style="background: linear-gradient(135deg, #f8f9ff 0%, #ffffff 100%); padding: 20px; border-radius: 12px; border-left: 5px solid #2196F3;">
-        <h2 style="color: #1976d2; margin: 0 0 15px 0; font-size: 20px; display: flex; align-items: center;">
-            📊 Current Availability Summary
-        </h2>
-    """
-    
-    if all_availability:
-        grouped_availability = group_by_date(all_availability)
+    # Create configuration section
+    config_section = ""
+    if config_info:
+        config_section = """
+        <div style="background: linear-gradient(135deg, #e3f2fd 0%, #ffffff 100%); padding: 20px; border-radius: 12px; margin-top: 20px; border-left: 5px solid #2196F3;">
+            <h3 style="color: #1976d2; margin: 0 0 15px 0; font-size: 16px; display: flex; align-items: center;">
+                ⚙️ Monitor Configuration
+            </h3>
+            <div style="color: #424242; font-size: 14px;">
+        """
         
-        if grouped_availability:
-            # Sort dates
-            for date_str in sorted(grouped_availability.keys()):
-                date_header = format_date_header(date_str)
-                all_availability_html += f"""
-                <div style="margin-bottom: 20px;">
-                    <h3 style="color: #0d47a1; margin: 0 0 10px 0; font-size: 16px; padding: 8px 12px; background: rgba(33, 150, 243, 0.1); border-radius: 6px;">
-                        📅 {date_header}
-                    </h3>
-                """
-                
-                # Display each course for this date
-                for course_name in sorted(grouped_availability[date_str].keys()):
-                    times = grouped_availability[date_str][course_name]
-                    times_str = ', '.join([f'{t} ({c} spots)' for t, c in sorted(times.items())])
-                    all_availability_html += f"""
-                    <div style="background: white; padding: 10px 14px; margin: 4px 0 4px 15px; border-radius: 6px; border-left: 3px solid #2196F3; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                        <strong style="color: #1976d2;">{course_name}:</strong>
-                        <span style="color: #424242; margin-left: 8px;">{times_str}</span>
-                    </div>
-                    """
-                
-                all_availability_html += "</div>"
-        else:
-            all_availability_html += """
-            <div style="background: white; padding: 12px 16px; margin: 8px 0; border-radius: 8px; border-left: 4px solid #ff9800; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                <span style="color: #ef6c00;">No availability found in the monitored time window.</span>
-            </div>
+        # Add configuration details
+        if 'courses' in config_info:
+            config_section += f"""
+                <div style="margin-bottom: 10px;">
+                    <strong>📊 Courses:</strong> {config_info['courses']} golf courses
+                </div>
             """
-    else:
-        all_availability_html += """
-        <div style="background: white; padding: 12px 16px; margin: 8px 0; border-radius: 8px; border-left: 4px solid #ff9800; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <span style="color: #ef6c00;">No availability found in the monitored time window.</span>
+        
+        if 'time_window' in config_info:
+            config_section += f"""
+                <div style="margin-bottom: 10px;">
+                    <strong>⏰ Time Window:</strong> {config_info['time_window']}
+                </div>
+            """
+        
+        if 'interval' in config_info:
+            config_section += f"""
+                <div style="margin-bottom: 10px;">
+                    <strong>🔄 Check Interval:</strong> {config_info['interval']} seconds ({config_info['interval']//60} minutes)
+                </div>
+            """
+        
+        if 'min_players' in config_info:
+            config_section += f"""
+                <div style="margin-bottom: 10px;">
+                    <strong>👥 Min. Spots Required:</strong> {config_info['min_players']}
+                </div>
+            """
+        
+        if 'days' in config_info:
+            config_section += f"""
+                <div style="margin-bottom: 10px;">
+                    <strong>📅 Days to Check:</strong> {config_info['days']} days from today
+                </div>
+            """
+        
+        config_section += """
+            </div>
         </div>
         """
-    
-    all_availability_html += "</div>"
     
     html_template = f"""
     <!DOCTYPE html>
@@ -177,14 +183,15 @@ def create_html_email_template(subject: str, new_availability: list, all_availab
             <div style="padding: 30px 20px;">
                 {new_availability_html}
                 
-                {all_availability_html}
-                
                 <!-- Call to Action -->
                 <div style="text-align: center; margin: 30px 0 20px 0;">
                     <div style="background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%); color: white; padding: 15px 25px; border-radius: 25px; display: inline-block; font-weight: 600; font-size: 16px; text-decoration: none; box-shadow: 0 4px 15px rgba(255, 107, 53, 0.3);">
                         🏌️ Happy Golfing!
                     </div>
                 </div>
+                
+                <!-- Configuration Info Section -->
+                {config_section}
                 
                 <!-- Tips Section -->
                 <div style="background: #f8f9fa; padding: 20px; border-radius: 12px; margin-top: 20px; border-left: 5px solid #6c757d;">
@@ -233,7 +240,7 @@ def create_html_email_template(subject: str, new_availability: list, all_availab
     return html_template
 
 
-def send_email_notification(subject: str, new_availability: list = None, all_availability: dict = None, time_window: str = "08:00-17:00") -> None:
+def send_email_notification(subject: str, new_availability: list = None, all_availability: dict = None, time_window: str = "08:00-17:00", config_info: dict = None) -> None:
     """Send beautiful HTML email notification using SMTP settings from environment variables.
     
     Args:
@@ -241,6 +248,7 @@ def send_email_notification(subject: str, new_availability: list = None, all_ava
         new_availability: List of newly available time slots
         all_availability: Dictionary of all current availability 
         time_window: Time window being monitored
+        config_info: Dictionary with startup configuration info
     
     For Gmail users:
     1. Enable 2-factor authentication on your Google account
@@ -261,6 +269,8 @@ def send_email_notification(subject: str, new_availability: list = None, all_ava
         new_availability = []
     if all_availability is None:
         all_availability = {}
+    if config_info is None:
+        config_info = {}
         
     # Check if email is enabled
     email_enabled = os.getenv("EMAIL_ENABLED", "false").lower() in ("1", "true", "yes")
@@ -312,20 +322,13 @@ Time Window: {time_window}
                 plain_text_body += f"• {item}\n"
             plain_text_body += "\n"
         
-        if all_availability:
-            plain_text_body += "All current availability:\n"
-            for state_key, times in all_availability.items():
-                if times:
-                    course_name = state_key.rsplit('_', 1)[0]
-                    times_str = ', '.join([f'{t}({c} spots)' for t, c in times.items()])
-                    plain_text_body += f"• {course_name}: {times_str}\n"
-        
         plain_text_body += "\nHappy golfing! ⛳\n\n--- Golf Availability Monitor ---"
         
         # Create message
         msg = MIMEMultipart('alternative')
         msg['From'] = email_from
-        msg['To'] = ', '.join(recipients)
+        msg['To'] = email_from  # Send to self to hide recipients
+        msg['Bcc'] = ', '.join(recipients)  # Use BCC for actual recipients
         msg['Subject'] = subject
         
         # Attach plain text and HTML versions

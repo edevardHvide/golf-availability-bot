@@ -23,12 +23,14 @@ class GolfClubURL:
             start_time = self.default_start_time
         
         date_str = target_date.strftime("%Y%m%d")
+        selected_date = f"{date_str}T000000"  # SelectedDate always ends with T000000
         booking_start = f"{date_str}T{start_time}"
         
         return (f"https://www.golfbox.no/site/my_golfbox/ressources/booking/grid.asp?"
+                f"SelectedDate={selected_date}&"
+                f"Booking_Start={booking_start}&"
                 f"Ressource_GUID={{{self.resource_guid}}}&"
-                f"Club_GUID={self.club_guid}&"
-                f"Booking_Start={booking_start}")
+                f"Club_GUID={self.club_guid}")
 
 
 class GolfClubURLManager:
