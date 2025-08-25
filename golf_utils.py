@@ -10,7 +10,7 @@ from email.mime.multipart import MIMEMultipart
 from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 
 
-def create_html_email_template(subject: str, new_availability: list, all_availability: dict, time_window: str, config_info: dict = None, club_order: list = None) -> str:
+def create_html_email_template(subject: str, new_availability: list, all_availability: dict, time_window: str, config_info: dict = None, club_order: list = None, user_preferences: dict = None) -> str:
     """Create a beautiful HTML email template for golf availability notifications."""
     current_date = datetime.datetime.now().strftime('%B %d, %Y at %I:%M %p')
     
@@ -167,6 +167,25 @@ def create_html_email_template(subject: str, new_availability: list, all_availab
             </div>
         </div>
         """
+    # Create personalized greeting
+    personalized_greeting = ""
+    if user_preferences:
+        user_name = user_preferences.get('name', 'Golf Enthusiast')
+        courses_count = len(user_preferences.get('selected_courses', []))
+        times_count = len(user_preferences.get('time_slots', []))
+        personalized_greeting = f"""
+        <div style="background: #f8f9fa; padding: 20px; border-radius: 12px; margin-bottom: 20px; border-left: 4px solid #007bff;">
+            <h3 style="color: #343a40; margin: 0 0 10px 0; font-size: 18px;">
+                👋 Hello {user_name}!
+            </h3>
+            <p style="color: #6c757d; margin: 0; font-size: 14px;">
+                This personalized alert is based on your preferences:<br>
+                • Monitoring {courses_count} golf course(s)<br>
+                • Looking for times in {times_count} preferred slot(s)<br>
+                • Minimum {user_preferences.get('min_players', 1)} player(s)
+            </p>
+        </div>
+        """
     
     html_template = f"""
     <!DOCTYPE html>
@@ -194,6 +213,7 @@ def create_html_email_template(subject: str, new_availability: list, all_availab
             
             <!-- Content -->
             <div style="padding: 30px 20px;">
+                {personalized_greeting}
                 {new_availability_html}
                 
                 <!-- Call to Action -->
@@ -253,7 +273,7 @@ def create_html_email_template(subject: str, new_availability: list, all_availab
     return html_template
 
 
-def send_email_notification(subject: str, new_availability: list = None, all_availability: dict = None, time_window: str = "08:00-17:00", config_info: dict = None, club_order: list = None) -> None:
+def send_email_notification(subject: str, new_availability: list = None, all_availability: dict = None, time_window: str = "08:00-17:00", config_info: dict = None, club_order: list = None, user_preferences: dict = None) -> None:
     """Send beautiful HTML email notification using SMTP settings from environment variables.
     
     Args:
@@ -298,7 +318,12 @@ def send_email_notification(subject: str, new_availability: list = None, all_ava
         smtp_user = os.getenv("SMTP_USER", "").strip()
         smtp_pass = os.getenv("SMTP_PASS", "").strip()
         email_from = os.getenv("EMAIL_FROM", "").strip()
-        email_to = os.getenv("EMAIL_TO", "").strip()
+        
+        # Use user's email if provided, otherwise fall back to environment variable
+        if user_preferences and user_preferences.get('email'):
+            email_to = user_preferences['email'].strip()
+        else:
+            email_to = os.getenv("EMAIL_TO", "").strip()
         
         if not all([smtp_host, smtp_user, smtp_pass, email_from, email_to]):
             missing = []
@@ -315,14 +340,17 @@ def send_email_notification(subject: str, new_availability: list = None, all_ava
             print(f"[EMAIL] Missing required environment variables: {', '.join(missing)}")
             return
         
-        # Parse multiple recipients (comma-separated)
-        recipients = [email.strip() for email in email_to.split(',') if email.strip()]
+        # Parse multiple recipients (comma-separated) - but for personalized emails, use single recipient
+        if user_preferences:
+            recipients = [email_to]  # Single recipient for personalized emails
+        else:
+            recipients = [email.strip() for email in email_to.split(',') if email.strip()]
         if not recipients:
             print("[EMAIL] No valid recipients found")
             return
         
         # Create HTML email content
-        html_body = create_html_email_template(subject, new_availability, all_availability, time_window, config_info, club_order)
+        html_body = create_html_email_template(subject, new_availability, all_availability, time_window, config_info, club_order, user_preferences)
         
         # Create plain text fallback
         plain_text_body = f"""Golf Availability Alert

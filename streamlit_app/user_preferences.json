@@ -1,0 +1,81 @@
+{
+  "edevard.hvide@gmail.com": {
+    "name": "Edevard hvide",
+    "email": "edevard.hvide@gmail.com",
+    "selected_courses": [
+      "oslo_golfklubb",
+      "baerum_gk",
+      "drammen_golfklubb",
+      "kongsberg_golfklubb"
+    ],
+    "time_slots": [
+      "06:00",
+      "06:30",
+      "07:00",
+      "07:30",
+      "08:00",
+      "08:30",
+      "09:00",
+      "09:30",
+      "10:00",
+      "10:30",
+      "11:00",
+      "11:30"
+    ],
+    "min_players": 1,
+    "days_ahead": 4,
+    "notification_frequency": "immediate",
+    "timestamp": "2025-08-25T15:41:45.464381"
+  },
+  "john.doe@example.com": {
+    "name": "John Doe",
+    "email": "john.doe@example.com",
+    "selected_courses": [
+      "miklagard_gk"
+    ],
+    "time_slots": [
+      "06:00",
+      "06:30",
+      "07:00",
+      "07:30",
+      "08:00",
+      "08:30",
+      "09:00",
+      "09:30",
+      "10:00",
+      "10:30",
+      "11:00",
+      "11:30"
+    ],
+    "min_players": 2,
+    "days_ahead": 7,
+    "notification_frequency": "immediate",
+    "timestamp": "2025-08-25T15:45:36.340638"
+  },
+  "per.age@golf.com": {
+    "name": "Per Age",
+    "email": "per.age@golf.com",
+    "selected_courses": [
+      "oslo_golfklubb",
+      "baerum_gk"
+    ],
+    "time_slots": [
+      "06:00",
+      "06:30",
+      "07:00",
+      "07:30",
+      "08:00",
+      "08:30",
+      "09:00",
+      "09:30",
+      "10:00",
+      "10:30",
+      "11:00",
+      "11:30"
+    ],
+    "min_players": 1,
+    "days_ahead": 4,
+    "notification_frequency": "immediate",
+    "timestamp": "2025-08-25T15:54:27.056750"
+  }
+}

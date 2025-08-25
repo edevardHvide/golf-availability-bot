@@ -1,0 +1,7 @@
+# Render.com Build and Start Scripts
+
+# Build command (run during deployment)
+pip install -r streamlit_app/requirements.txt && pip install -r requirements.txt
+
+# Start command (run to start the service)
+cd streamlit_app && python api_server.py & sleep 3 && streamlit run app.py --server.address 0.0.0.0 --server.port $PORT --server.enableCORS false --server.enableXsrfProtection false

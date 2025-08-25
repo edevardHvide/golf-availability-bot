@@ -4,6 +4,7 @@
 Environment Variables:
     SELECTED_CLUBS: Optional comma-separated list of club keys to monitor
                    (if not set, uses default configuration)
+    API_URL: URL for the Streamlit API server (default: http://localhost:8000)
     
 A browser window will open for manual login to golfbox.golf.
 """
@@ -13,7 +14,10 @@ import argparse
 import datetime
 import os
 import re
-from typing import Dict
+import json
+import requests
+from typing import Dict, List
+from pathlib import Path
 from dotenv import load_dotenv
 
 from playwright.async_api import async_playwright, BrowserContext, Page
@@ -228,6 +232,152 @@ async def check_course_availability(context: BrowserContext, url: str, course_na
         if page:
             await page.close()
 
+def get_user_preferences() -> List[Dict]:
+    """Fetch all user preferences from API or local file."""
+    api_url = os.getenv("API_URL", "http://localhost:8000")
+    
+    try:
+        # Try to fetch from API first
+        console.print("📋 Fetching user preferences from API...", style="cyan")
+        response = requests.get(f"{api_url}/api/preferences", timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            user_preferences = list(data.get("preferences", {}).values())
+            console.print(f"✅ Loaded {len(user_preferences)} user profiles from API", style="green")
+            return user_preferences
+        else:
+            console.print(f"⚠️ API returned status {response.status_code}, falling back to local file", style="yellow")
+            
+    except requests.exceptions.ConnectionError:
+        console.print("⚠️ API server not available, falling back to local file", style="yellow")
+    except Exception as e:
+        console.print(f"⚠️ Error fetching from API: {e}, falling back to local file", style="yellow")
+    
+    # Fallback to local file
+    try:
+        preferences_file = Path(__file__).parent / "user_preferences.json"
+        if preferences_file.exists():
+            with open(preferences_file, 'r') as f:
+                all_prefs = json.load(f)
+            user_preferences = list(all_prefs.values())
+            console.print(f"✅ Loaded {len(user_preferences)} user profiles from local file", style="green")
+            return user_preferences
+        else:
+            console.print("📄 No local preferences file found", style="dim")
+            return []
+    except Exception as e:
+        console.print(f"❌ Error loading local preferences: {e}", style="red")
+        return []
+
+def filter_availability_for_user(user_prefs: Dict, all_availability: Dict, target_date: datetime.date) -> Dict[str, Dict[str, int]]:
+    """Filter availability results based on user preferences."""
+    filtered = {}
+    
+    # Get user's preferred courses
+    user_courses = user_prefs.get('selected_courses', [])
+    user_time_slots = user_prefs.get('time_slots', [])
+    min_players = user_prefs.get('min_players', 1)
+    
+    date_str = target_date.strftime('%Y-%m-%d')
+    
+    for state_key, available_times in all_availability.items():
+        if not state_key.endswith(f"_{date_str}"):
+            continue
+            
+        # Extract course name from state key (format: "Course Name_YYYY-MM-DD")
+        course_label = state_key.replace(f"_{date_str}", "")
+        
+        # Check if this course matches any of the user's selected courses
+        # Need to map from display name back to course key
+        course_matches = False
+        for course_key in user_courses:
+            club = golf_url_manager.get_club_by_name(course_key)
+            if club and club.display_name == course_label:
+                course_matches = True
+                break
+        
+        if not course_matches:
+            continue
+            
+        # Filter times based on user preferences
+        filtered_times = {}
+        for time_str, capacity in available_times.items():
+            # Check if time matches user's preferred time slots
+            if user_time_slots and time_str not in user_time_slots:
+                continue
+                
+            # Check if capacity meets minimum player requirement
+            if capacity >= min_players:
+                filtered_times[time_str] = capacity
+        
+        if filtered_times:
+            filtered[state_key] = filtered_times
+    
+    return filtered
+
+def send_personalized_notifications(user_preferences: List[Dict], all_availability: Dict, dates_to_check: List[datetime.date], previous_state: Dict):
+    """Send personalized email notifications to each user based on their preferences."""
+    
+    for user_prefs in user_preferences:
+        user_name = user_prefs.get('name', 'Golf Enthusiast')
+        user_email = user_prefs.get('email')
+        
+        if not user_email:
+            console.print(f"⚠️ Skipping user {user_name} - no email address", style="yellow")
+            continue
+        
+        # Collect new availability for this user across all dates
+        user_new_availability = []
+        user_all_availability = {}
+        
+        for target_date in dates_to_check:
+            # Filter availability for this user on this date
+            user_filtered = filter_availability_for_user(user_prefs, all_availability, target_date)
+            user_all_availability.update(user_filtered)
+            
+            # Check for new availability (compared to previous state)
+            date_str = target_date.strftime('%Y-%m-%d')
+            for state_key, available_times in user_filtered.items():
+                previous_times = previous_state.get(state_key, {})
+                course_label = state_key.replace(f"_{date_str}", "")
+                
+                for time_str, capacity in available_times.items():
+                    if time_str not in previous_times or capacity > previous_times[time_str]:
+                        day_name = "Today" if target_date == datetime.date.today() else target_date.strftime('%A')
+                        user_new_availability.append(f"{course_label} on {day_name} ({date_str}) at {time_str}: {capacity} spots")
+        
+        # Send notification if there's new availability for this user
+        if user_new_availability:
+            console.print(f"📧 Sending personalized notification to {user_name} ({user_email})", style="green")
+            console.print(f"   Found {len(user_new_availability)} new slots matching their preferences", style="dim")
+            
+            # Prepare user-specific configuration info
+            config_info = {
+                'user_name': user_name,
+                'user_email': user_email,
+                'courses': len(user_prefs.get('selected_courses', [])),
+                'time_slots': len(user_prefs.get('time_slots', [])),
+                'min_players': user_prefs.get('min_players', 1),
+                'days_ahead': user_prefs.get('days_ahead', 4),
+                'notification_frequency': user_prefs.get('notification_frequency', 'immediate')
+            }
+            
+            subject = f"⛳ Personal Golf Alert for {user_name} - {dates_to_check[0].strftime('%Y-%m-%d')}"
+            
+            # Send personalized email
+            send_email_notification(
+                subject=subject,
+                new_availability=user_new_availability,
+                all_availability=user_all_availability,
+                time_window="Personalized",
+                config_info=config_info,
+                club_order=None,  # Will be determined from user's preferences
+                user_preferences=user_prefs
+            )
+        else:
+            console.print(f"📭 No new availability for {user_name} based on their preferences", style="dim")
+
 async def main():
     """Main monitoring loop."""
     # Parse command line arguments
@@ -249,13 +399,38 @@ async def main():
     except ValueError as e:
         console.print(f"Error: {e}", style="red")
         return
+
+    console.print("🏌️ Golf Availability Monitor", style="bold blue")
     
-    # Get club keys from environment or use default
-    selected_clubs_env = os.getenv("SELECTED_CLUBS", "").strip()
-    if selected_clubs_env:
-        club_keys = [key.strip() for key in re.split(r"[,;\n\r\t]+", selected_clubs_env) if key.strip()]
+    # Load user preferences
+    user_preferences = get_user_preferences()
+    if user_preferences:
+        console.print(f"👥 Loaded {len(user_preferences)} user profiles with preferences", style="blue")
+        for user in user_preferences:
+            user_name = user.get('name', 'Unknown')
+            courses_count = len(user.get('selected_courses', []))
+            times_count = len(user.get('time_slots', []))
+            console.print(f"  • {user_name}: {courses_count} courses, {times_count} time slots", style="dim")
     else:
-        club_keys = golf_url_manager.get_default_club_configuration()
+        console.print("👥 No user preferences found - using legacy mode", style="yellow")
+    
+    # Determine which clubs to monitor
+    if user_preferences:
+        # Build comprehensive club list from all users
+        all_user_courses = set()
+        for user in user_preferences:
+            all_user_courses.update(user.get('selected_courses', []))
+        
+        club_keys = list(all_user_courses)
+        console.print(f"📋 Monitoring all courses from user preferences: {len(club_keys)} courses", style="cyan")
+    else:
+        # Fallback to original logic
+        selected_clubs_env = os.getenv("SELECTED_CLUBS", "").strip()
+        if selected_clubs_env:
+            club_keys = [key.strip() for key in re.split(r"[,;\n\r\t]+", selected_clubs_env) if key.strip()]
+        else:
+            club_keys = golf_url_manager.get_default_club_configuration()
+        console.print(f"📋 Using default/environment configuration: {len(club_keys)} courses", style="cyan")
     
     # Get URLs and labels from golf_club_urls.py
     today = datetime.date.today()
@@ -265,8 +440,7 @@ async def main():
     console.print(f"Debug - Using club keys: {club_keys}", style="dim")
     console.print(f"Debug - Final labels count: {len(labels)}, URLs count: {len(urls)}", style="dim")
     
-    console.print("🏌️ Golf Availability Monitor", style="bold blue")
-    console.print(f"Monitoring {len(urls)} courses", style="blue")
+    console.print(f"Monitoring {len(club_keys)} courses total", style="blue")
     console.print(f"Time window: {window_str}", style="blue")
     console.print(f"Check interval: {args.interval} seconds", style="blue")
     
@@ -366,34 +540,40 @@ async def main():
                 
                 console.print(f"\n🎯 Total times found across all days: {total_found}")
                 
-                # Send email for new availability
-                if new_availability:
-                    console.print("\n🚨 New availability detected!", style="bold green")
-                    for item in new_availability:
-                        console.print(f"  • {item}", style="green")
-                    
-                    # Send email notification
-                    alert_date = dates_to_check[0].strftime('%Y-%m-%d')
-                    subject = f"⛳ Golf Availability Alert - {alert_date}"
-                    
-                    # Prepare configuration info for email
-                    config_info = {
-                        'courses': len(urls),
-                        'time_window': window_str,
-                        'interval': args.interval,
-                        'min_players': args.players,
-                        'days': args.days
-                    }
-                    
-                    send_email_notification(
-                        subject=subject, 
-                        new_availability=new_availability,
-                        all_availability=current_state,
-                        time_window=window_str,
-                        config_info=config_info,
-                        club_order=labels
-                    )
-                    console.print("Email notification sent!", style="green")
+                # Send personalized notifications to users or fallback to generic email
+                if user_preferences:
+                    # Send personalized notifications to each user
+                    console.print("\n📧 Sending personalized notifications...", style="bold cyan")
+                    send_personalized_notifications(user_preferences, current_state, dates_to_check, previous_state)
+                else:
+                    # Fallback to original generic email notification
+                    if new_availability:
+                        console.print("\n🚨 New availability detected!", style="bold green")
+                        for item in new_availability:
+                            console.print(f"  • {item}", style="green")
+                        
+                        # Send generic email notification
+                        alert_date = dates_to_check[0].strftime('%Y-%m-%d')
+                        subject = f"⛳ Golf Availability Alert - {alert_date}"
+                        
+                        # Prepare configuration info for email
+                        config_info = {
+                            'courses': len(urls),
+                            'time_window': window_str,
+                            'interval': args.interval,
+                            'min_players': args.players,
+                            'days': args.days
+                        }
+                        
+                        send_email_notification(
+                            subject=subject, 
+                            new_availability=new_availability,
+                            all_availability=current_state,
+                            time_window=window_str,
+                            config_info=config_info,
+                            club_order=labels
+                        )
+                        console.print("Generic email notification sent!", style="green")
                 
                 # Update previous state
                 previous_state = current_state.copy()
