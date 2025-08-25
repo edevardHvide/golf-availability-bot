@@ -236,27 +236,67 @@ def get_user_preferences() -> List[Dict]:
     """Fetch all user preferences from API or local file."""
     api_url = os.getenv("API_URL", "http://localhost:8000")
     
-    try:
-        # Try to fetch from API first
-        console.print("📋 Fetching user preferences from API...", style="cyan")
-        response = requests.get(f"{api_url}/api/preferences", timeout=10)
+    # Always try cloud API first
+    if api_url and "localhost" not in api_url:
+        console.print(f"🌐 Fetching user preferences from cloud API: {api_url}", style="cyan")
         
-        if response.status_code == 200:
-            data = response.json()
-            user_preferences = list(data.get("preferences", {}).values())
-            console.print(f"✅ Loaded {len(user_preferences)} user profiles from API", style="green")
-            return user_preferences
-        else:
-            console.print(f"⚠️ API returned status {response.status_code}, falling back to local file", style="yellow")
-            
-    except requests.exceptions.ConnectionError:
-        console.print("⚠️ API server not available, falling back to local file", style="yellow")
-    except Exception as e:
-        console.print(f"⚠️ Error fetching from API: {e}, falling back to local file", style="yellow")
+        # Try multiple endpoints for API access
+        api_endpoints = [
+            f"{api_url}/api/preferences",
+            f"{api_url}:8000/api/preferences"
+        ]
+        
+        for endpoint in api_endpoints:
+            try:
+                console.print(f"  🔗 Trying: {endpoint}", style="dim")
+                response = requests.get(endpoint, timeout=15)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    user_preferences = list(data.get("preferences", {}).values())
+                    console.print(f"✅ Successfully loaded {len(user_preferences)} user profiles from cloud API", style="green")
+                    
+                    # Show user summary
+                    for user in user_preferences:
+                        name = user.get('name', 'Unknown')
+                        email = user.get('email', 'No email')
+                        courses = len(user.get('selected_courses', []))
+                        console.print(f"  👤 {name} ({email}) - {courses} courses", style="dim")
+                    
+                    return user_preferences
+                else:
+                    console.print(f"  ⚠️ Endpoint returned status {response.status_code}", style="yellow")
+                    
+            except requests.exceptions.ConnectionError:
+                console.print(f"  ❌ Connection failed to {endpoint}", style="red")
+            except Exception as e:
+                console.print(f"  ❌ Error: {str(e)[:50]}...", style="red")
+        
+        console.print("⚠️ All cloud API endpoints failed, falling back to local file", style="yellow")
     
-    # Fallback to local file
+    # Fallback to localhost API
+    elif "localhost" in api_url:
+        try:
+            console.print("📋 Fetching user preferences from local API...", style="cyan")
+            response = requests.get(f"{api_url}/api/preferences", timeout=5)
+            
+            if response.status_code == 200:
+                data = response.json()
+                user_preferences = list(data.get("preferences", {}).values())
+                console.print(f"✅ Loaded {len(user_preferences)} user profiles from local API", style="green")
+                return user_preferences
+            else:
+                console.print(f"⚠️ Local API returned status {response.status_code}", style="yellow")
+                
+        except requests.exceptions.ConnectionError:
+            console.print("⚠️ Local API server not available", style="yellow")
+        except Exception as e:
+            console.print(f"⚠️ Error fetching from local API: {e}", style="yellow")
+    
+    # Final fallback to local file
     try:
-        preferences_file = Path(__file__).parent / "user_preferences.json"
+        console.print("📄 Falling back to local preferences file...", style="yellow")
+        preferences_file = Path(__file__).parent / "streamlit_app" / "user_preferences.json"
         if preferences_file.exists():
             with open(preferences_file, 'r') as f:
                 all_prefs = json.load(f)
@@ -400,19 +440,23 @@ async def main():
         console.print(f"Error: {e}", style="red")
         return
 
-    console.print("🏌️ Golf Availability Monitor", style="bold blue")
+    console.print("🏌️ Golf Availability Monitor - Personalized Edition", style="bold blue")
+    console.print("=" * 60)
     
-    # Load user preferences
+    # Load user preferences from cloud API first
     user_preferences = get_user_preferences()
     if user_preferences:
-        console.print(f"👥 Loaded {len(user_preferences)} user profiles with preferences", style="blue")
+        console.print(f"👥 Running personalized monitoring for {len(user_preferences)} users:", style="blue")
         for user in user_preferences:
             user_name = user.get('name', 'Unknown')
+            user_email = user.get('email', 'No email')
             courses_count = len(user.get('selected_courses', []))
-            times_count = len(user.get('time_slots', []))
-            console.print(f"  • {user_name}: {courses_count} courses, {times_count} time slots", style="dim")
+            times_count = len(user.get('time_slots', user.get('selected_time_slots', [])))
+            console.print(f"  📧 {user_email} ({user_name}): {courses_count} courses, {times_count} time slots", style="cyan")
+        console.print("📧 Each user will receive personalized email notifications based on their preferences", style="green")
     else:
         console.print("👥 No user preferences found - using legacy mode", style="yellow")
+        console.print("💡 Create user profiles at your Streamlit app to enable personalized monitoring", style="dim")
     
     # Determine which clubs to monitor
     if user_preferences:
