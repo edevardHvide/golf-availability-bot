@@ -37,9 +37,9 @@
 pip install -r streamlit_app/requirements.txt && pip install -r requirements.txt
 ```
 
-### **RECOMMENDED Start Command (Both API + Streamlit):**
+### **WORKING Start Command (Both Services):**
 ```bash
-bash startup.sh
+cd streamlit_app && (python api_server.py &) && sleep 3 && streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true --browser.gatherUsageStats false
 ```
 
 ### **Alternative (Streamlit Only):**
@@ -47,9 +47,9 @@ bash startup.sh
 streamlit run streamlit_app/app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true --browser.gatherUsageStats false
 ```
 
-### **Manual Command (Both Services):**
+### **Simple Fix (Manual Command):**
 ```bash
-cd streamlit_app && python api_server.py & sleep 3 && streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true --browser.gatherUsageStats false
+cd streamlit_app && python -c "import subprocess; subprocess.Popen(['python', 'api_server.py'])" && sleep 3 && streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true --browser.gatherUsageStats false
 ```
 
 ---
