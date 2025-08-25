@@ -52,10 +52,19 @@ def main():
     try:
         # Test with sample data for the new email format
         test_new_availability = [
-            "Test Course on 2025-08-25 at 10:00: 2 spots"
+            "Pebble Beach on 2025-08-25 at 10:00: 2 spots",
+            "Augusta National on 2025-08-25 at 14:30: 1 spot",
+            "St. Andrews on 2025-08-26 at 09:15: 4 spots"
         ]
         test_all_availability = {
-            "Test Course_2025-08-25": {"10:00": 2, "14:30": 1}
+            "Pebble Beach_2025-08-25": {"10:00": 2, "14:30": 1},
+            "Augusta National_2025-08-25": {"14:30": 1, "16:00": 2},
+            "St. Andrews_2025-08-25": {"11:15": 3},
+            "Pebble Beach_2025-08-26": {"08:00": 1, "13:30": 2},
+            "Augusta National_2025-08-26": {},  # No availability 
+            "St. Andrews_2025-08-26": {"09:15": 4, "15:45": 1},
+            "Pebble Beach_2025-08-27": {"10:30": 3},
+            "St. Andrews_2025-08-27": {"12:00": 2, "17:00": 1}
         }
         
         send_email_notification(

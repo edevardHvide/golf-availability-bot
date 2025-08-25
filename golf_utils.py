@@ -14,24 +14,93 @@ def create_html_email_template(subject: str, new_availability: list, all_availab
     """Create a beautiful HTML email template for golf availability notifications."""
     current_date = datetime.datetime.now().strftime('%B %d, %Y at %I:%M %p')
     
-    # Create new availability HTML
+    # Group data by date for better organization
+    def group_by_date(availability_dict):
+        """Group availability data by date."""
+        grouped = {}
+        for state_key, times in availability_dict.items():
+            if times:  # Only include courses with availability
+                parts = state_key.rsplit('_', 1)
+                if len(parts) == 2:
+                    course_name, date_str = parts
+                    if date_str not in grouped:
+                        grouped[date_str] = {}
+                    grouped[date_str][course_name] = times
+        return grouped
+    
+    def format_date_header(date_str):
+        """Format date string for display."""
+        try:
+            date_obj = datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
+            today = datetime.date.today()
+            if date_obj == today:
+                return f"Today ({date_obj.strftime('%A, %B %d')})"
+            elif date_obj == today + datetime.timedelta(days=1):
+                return f"Tomorrow ({date_obj.strftime('%A, %B %d')})"
+            else:
+                return date_obj.strftime('%A, %B %d, %Y')
+        except Exception:
+            return date_str
+    
+    # Create new availability HTML - structured by date
     new_availability_html = ""
     if new_availability:
+        # Group new availability by date
+        new_by_date = {}
+        for item in new_availability:
+            # Extract date from item string (format: "Course on YYYY-MM-DD at HH:MM: X spots")
+            import re
+            match = re.search(r'(\w+.*?) on (\d{4}-\d{2}-\d{2}) at (\d{2}:\d{2}): (\d+) spot', item)
+            if match:
+                course, date_str, time_str, spots = match.groups()
+                if date_str not in new_by_date:
+                    new_by_date[date_str] = []
+                new_by_date[date_str].append({
+                    'course': course,
+                    'time': time_str,
+                    'spots': spots
+                })
+        
         new_availability_html = """
         <div style="background: linear-gradient(135deg, #e8f5e8 0%, #f0f9f0 100%); padding: 20px; border-radius: 12px; margin-bottom: 30px; border-left: 5px solid #4CAF50;">
             <h2 style="color: #2e7d32; margin: 0 0 15px 0; font-size: 20px; display: flex; align-items: center;">
                 🚨 New Availability Detected!
             </h2>
         """
-        for item in new_availability:
+        
+        # Sort dates
+        for date_str in sorted(new_by_date.keys()):
+            date_header = format_date_header(date_str)
             new_availability_html += f"""
-            <div style="background: white; padding: 12px 16px; margin: 8px 0; border-radius: 8px; border-left: 4px solid #4CAF50; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                <span style="color: #2e7d32; font-weight: 600;">• {item}</span>
-            </div>
+            <div style="margin-bottom: 15px;">
+                <h3 style="color: #1b5e20; margin: 0 0 8px 0; font-size: 16px; padding: 8px 12px; background: rgba(76, 175, 80, 0.1); border-radius: 6px;">
+                    📅 {date_header}
+                </h3>
             """
+            
+            # Group by course for this date
+            courses_on_date = {}
+            for item in new_by_date[date_str]:
+                course = item['course']
+                if course not in courses_on_date:
+                    courses_on_date[course] = []
+                courses_on_date[course].append(f"{item['time']} ({item['spots']} spots)")
+            
+            # Display each course
+            for course, times_list in sorted(courses_on_date.items()):
+                times_str = ', '.join(times_list)
+                new_availability_html += f"""
+                <div style="background: white; padding: 10px 14px; margin: 4px 0 4px 15px; border-radius: 6px; border-left: 3px solid #4CAF50; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                    <strong style="color: #2e7d32;">{course}:</strong>
+                    <span style="color: #424242; margin-left: 8px;">{times_str}</span>
+                </div>
+                """
+            
+            new_availability_html += "</div>"
+        
         new_availability_html += "</div>"
     
-    # Create all availability HTML
+    # Create all availability HTML - structured by date
     all_availability_html = """
     <div style="background: linear-gradient(135deg, #f8f9ff 0%, #ffffff 100%); padding: 20px; border-radius: 12px; border-left: 5px solid #2196F3;">
         <h2 style="color: #1976d2; margin: 0 0 15px 0; font-size: 20px; display: flex; align-items: center;">
@@ -40,16 +109,37 @@ def create_html_email_template(subject: str, new_availability: list, all_availab
     """
     
     if all_availability:
-        for state_key, times in all_availability.items():
-            if times:  # Only show courses with availability
-                course_name = state_key.rsplit('_', 1)[0]  # Remove date suffix
-                times_str = ', '.join([f'{t} ({c} spots)' for t, c in times.items()])
+        grouped_availability = group_by_date(all_availability)
+        
+        if grouped_availability:
+            # Sort dates
+            for date_str in sorted(grouped_availability.keys()):
+                date_header = format_date_header(date_str)
                 all_availability_html += f"""
-                <div style="background: white; padding: 12px 16px; margin: 8px 0; border-radius: 8px; border-left: 4px solid #2196F3; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                    <strong style="color: #1976d2;">{course_name}:</strong>
-                    <span style="color: #424242; margin-left: 8px;">{times_str}</span>
-                </div>
+                <div style="margin-bottom: 20px;">
+                    <h3 style="color: #0d47a1; margin: 0 0 10px 0; font-size: 16px; padding: 8px 12px; background: rgba(33, 150, 243, 0.1); border-radius: 6px;">
+                        📅 {date_header}
+                    </h3>
                 """
+                
+                # Display each course for this date
+                for course_name in sorted(grouped_availability[date_str].keys()):
+                    times = grouped_availability[date_str][course_name]
+                    times_str = ', '.join([f'{t} ({c} spots)' for t, c in sorted(times.items())])
+                    all_availability_html += f"""
+                    <div style="background: white; padding: 10px 14px; margin: 4px 0 4px 15px; border-radius: 6px; border-left: 3px solid #2196F3; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                        <strong style="color: #1976d2;">{course_name}:</strong>
+                        <span style="color: #424242; margin-left: 8px;">{times_str}</span>
+                    </div>
+                    """
+                
+                all_availability_html += "</div>"
+        else:
+            all_availability_html += """
+            <div style="background: white; padding: 12px 16px; margin: 8px 0; border-radius: 8px; border-left: 4px solid #ff9800; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <span style="color: #ef6c00;">No availability found in the monitored time window.</span>
+            </div>
+            """
     else:
         all_availability_html += """
         <div style="background: white; padding: 12px 16px; margin: 8px 0; border-radius: 8px; border-left: 4px solid #ff9800; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
