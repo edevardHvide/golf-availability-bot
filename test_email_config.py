@@ -50,21 +50,19 @@ def main():
     # Test sending email
     print("\n📧 Sending test email...")
     try:
+        # Test with sample data for the new email format
+        test_new_availability = [
+            "Test Course on 2025-08-25 at 10:00: 2 spots"
+        ]
+        test_all_availability = {
+            "Test Course_2025-08-25": {"10:00": 2, "14:30": 1}
+        }
+        
         send_email_notification(
-            "🧪 Golf Monitor Email Test", 
-            """This is a test email from your Golf Availability Monitor.
-
-If you received this email, your email configuration is working correctly!
-
-Configuration tested:
-- SMTP connection
-- Authentication
-- Message delivery
-
-Happy golfing! ⛳
-
---- Golf Availability Monitor ---
-"""
+            subject="🧪 Golf Monitor Email Test",
+            new_availability=test_new_availability,
+            all_availability=test_all_availability,
+            time_window="08:00-17:00"
         )
         print("✅ Test email sent successfully!")
         print("Check your inbox (and spam folder) for the test email.")

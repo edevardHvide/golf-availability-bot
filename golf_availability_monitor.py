@@ -11,7 +11,6 @@ A browser window will open for manual login to golfbox.golf.
 import asyncio
 import argparse
 import datetime
-import json
 import os
 import re
 from typing import Dict
@@ -379,23 +378,13 @@ async def main():
                     # Send email notification
                     alert_date = dates_to_check[0].strftime('%Y-%m-%d')
                     subject = f"⛳ Golf Availability Alert - {alert_date}"
-                    body = f"""New golf tee times available!
-
-Time window: {window_str}
-
-New availability:
-""" + "\n".join([f"• {item}" for item in new_availability]) + """
-
-All current availability:
-""" + "\n".join([f"• {label}: {', '.join([f'{t}({c} spots)' for t, c in times.items()]) if times else 'None'}" 
-                              for label, times in current_state.items()]) + """
-
-Happy golfing! ⛳
-
---- Golf Availability Monitor ---
-"""
                     
-                    send_email_notification(subject, body)
+                    send_email_notification(
+                        subject=subject, 
+                        new_availability=new_availability,
+                        all_availability=current_state,
+                        time_window=window_str
+                    )
                     console.print("Email notification sent!", style="green")
                 
                 # Update previous state
