@@ -232,6 +232,24 @@ class GolfClubURLManager:
                 default_start_time="070000",
                 location=(59.9186, 10.9553)  # Lørenskog location
             ),
+            "holtsmark_golfklubb": GolfClubURL(
+                name="holtsmark_golfklubb",
+                display_name="Holtsmark Golfklubb",
+                resource_guid="AD05E90F-74B1-487E-8391-BB86AD0326C1",
+                club_guid="D78EA093-4543-4CD5-BA4E-F6C80C1FEF67",
+                base_url_template="holtsmark_golfklubb_template",
+                default_start_time="000000",  # 00:00:00 start (based on URL pattern)
+                location=(59.7500, 10.2167)  # Holtsmark/Lier area location
+            ),
+            "larvik_golfklubb": GolfClubURL(
+                name="larvik_golfklubb",
+                display_name="Larvik Golfklubb",
+                resource_guid="8BDC26C6-FAD4-470B-88B3-6FD7033052EF",
+                club_guid="C85B2B36-BEC3-473D-AE20-745F700C175B",
+                base_url_template="larvik_golfklubb_template",
+                default_start_time="000000",  # 00:00:00 start (based on URL pattern)
+                location=(59.0508, 10.0397)  # Larvik location
+            ),
             "moss_og_rygge_golfklubb": GolfClubURL(
                 name="moss_og_rygge_golfklubb",
                 display_name="Moss & Rygge Golfklubb",
@@ -350,6 +368,37 @@ class GolfClubURLManager:
         
         return club_keys
     
+    def get_default_club_configuration(self) -> List[str]:
+        """Get the default list of clubs to monitor, ordered by distance from Oslo center."""
+        # Oslo center coordinates: 59.9139, 10.7522
+        oslo_center = (59.9139, 10.7522)
+        
+        # Calculate distances and sort clubs - include ALL clubs in the system
+        clubs_with_distance = []
+        
+        for club_key, club in self.clubs.items():
+            if club and club.location:
+                # Simple distance calculation (not accounting for Earth's curvature, but good enough for Norway)
+                lat_diff = abs(club.location[0] - oslo_center[0])
+                lng_diff = abs(club.location[1] - oslo_center[1])
+                distance = (lat_diff ** 2 + lng_diff ** 2) ** 0.5
+                clubs_with_distance.append((distance, club_key))
+        
+        # Sort by distance and return club keys
+        clubs_with_distance.sort(key=lambda x: x[0])
+        return [club_key for _, club_key in clubs_with_distance]
+    
+    def get_default_urls_and_labels(self, target_date: date = None) -> Tuple[str, str]:
+        """Get default configuration URLs and labels as comma-separated strings."""
+        if target_date is None:
+            target_date = date.today()
+        
+        default_clubs = self.get_default_club_configuration()
+        urls = self.generate_comma_separated_urls(default_clubs, target_date)
+        labels = self.generate_labels_string(default_clubs)
+        
+        return urls, labels
+
     def get_mapping_table(self) -> str:
         """Get a formatted mapping table for documentation."""
         table = "Golf Club URL Mapping Table\n"
@@ -433,7 +482,7 @@ if __name__ == "__main__":
     console.print(table)
     
     # Example usage
-    console.print(f"\n📋 Example Configuration for Oslo area clubs:", style="bold green")
+    console.print("\n📋 Example Configuration for Oslo area clubs:", style="bold green")
     oslo_clubs = ["oslo_golfklubb", "baerum_gk", "miklagard_gk"]
     urls, labels = get_club_config_string(oslo_clubs)
     

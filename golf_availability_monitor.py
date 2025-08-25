@@ -2,8 +2,8 @@
 """Golf Availability Monitor - Main monitoring script for multiple courses.
 
 Environment Variables:
-    GOLFBOX_GRID_URL: Comma-separated URLs to monitor
-    GRID_LABELS: Comma-separated names for the courses
+    SELECTED_CLUBS: Optional comma-separated list of club keys to monitor
+                   (if not set, uses default configuration)
     
 A browser window will open for manual login to golfbox.golf.
 """
@@ -22,6 +22,7 @@ from rich.table import Table
 
 from golfbot.grid_parser import parse_grid_html
 from golf_utils import send_email_notification, rewrite_url_for_day
+from golf_club_urls import golf_url_manager
 
 # Load environment (override=True to ensure .env values are used)
 load_dotenv(override=True)
@@ -249,41 +250,19 @@ async def main():
         console.print(f"Error: {e}", style="red")
         return
     
-    # Get URLs from environment
-    grid_urls_csv = os.getenv("GOLFBOX_GRID_URL", "").strip()
-    if not grid_urls_csv:
-        console.print("Error: GOLFBOX_GRID_URL not set in environment", style="red")
-        return
-    
-    # Parse URLs (comma/semicolon separated)
-    raw_urls = re.split(r"[,;\n\r\t]+", grid_urls_csv)
-    urls = []
-    for url in raw_urls:
-        url = url.strip().strip('"\'')
-        if url:
-            # Fix missing protocol
-            if url.startswith('//'):
-                url = 'https:' + url
-            elif not url.startswith(('http://', 'https://')):
-                url = 'https://' + url
-            urls.append(url)
-    
-    # Get course labels from environment
-    labels_csv = os.getenv("GRID_LABELS", "").strip()
-    console.print(f"Debug - GRID_LABELS from env: '{labels_csv}'", style="dim")
-    
-    if labels_csv:
-        raw_labels = re.split(r"[,;\n\r]+", labels_csv)
-        labels = [lbl.strip().strip('"\'') for lbl in raw_labels if lbl.strip()]
-        console.print(f"Debug - Parsed {len(labels)} labels: {labels}", style="dim")
+    # Get club keys from environment or use default
+    selected_clubs_env = os.getenv("SELECTED_CLUBS", "").strip()
+    if selected_clubs_env:
+        club_keys = [key.strip() for key in re.split(r"[,;\n\r\t]+", selected_clubs_env) if key.strip()]
     else:
-        labels = [f"Course {i+1}" for i in range(len(urls))]
-        console.print("Debug - No GRID_LABELS found, using generic names", style="dim")
+        club_keys = golf_url_manager.get_default_club_configuration()
     
-    # Ensure we have enough labels
-    while len(labels) < len(urls):
-        labels.append(f"Course {len(labels)+1}")
+    # Get URLs and labels from golf_club_urls.py
+    today = datetime.date.today()
+    urls = [golf_url_manager.get_club_by_name(key).get_url_for_date(today) for key in club_keys if golf_url_manager.get_club_by_name(key)]
+    labels = [golf_url_manager.get_club_by_name(key).display_name for key in club_keys if golf_url_manager.get_club_by_name(key)]
     
+    console.print(f"Debug - Using club keys: {club_keys}", style="dim")
     console.print(f"Debug - Final labels count: {len(labels)}, URLs count: {len(urls)}", style="dim")
     
     console.print("🏌️ Golf Availability Monitor", style="bold blue")
@@ -411,7 +390,8 @@ async def main():
                         new_availability=new_availability,
                         all_availability=current_state,
                         time_window=window_str,
-                        config_info=config_info
+                        config_info=config_info,
+                        club_order=labels
                     )
                     console.print("Email notification sent!", style="green")
                 

@@ -10,7 +10,7 @@ from email.mime.multipart import MIMEMultipart
 from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 
 
-def create_html_email_template(subject: str, new_availability: list, all_availability: dict, time_window: str, config_info: dict = None) -> str:
+def create_html_email_template(subject: str, new_availability: list, all_availability: dict, time_window: str, config_info: dict = None, club_order: list = None) -> str:
     """Create a beautiful HTML email template for golf availability notifications."""
     current_date = datetime.datetime.now().strftime('%B %d, %Y at %I:%M %p')
     
@@ -89,8 +89,21 @@ def create_html_email_template(subject: str, new_availability: list, all_availab
                     courses_on_date[course] = []
                 courses_on_date[course].append(f"{item['time']} ({item['spots']} spots)")
             
-            # Display each course
-            for course, times_list in sorted(courses_on_date.items()):
+            # Display each course in the specified order
+            if club_order:
+                # Sort courses by the provided order
+                courses_sorted = []
+                for club_name in club_order:
+                    if club_name in courses_on_date:
+                        courses_sorted.append((club_name, courses_on_date[club_name]))
+                # Add any courses not in the order list at the end
+                for course, times_list in sorted(courses_on_date.items()):
+                    if course not in club_order:
+                        courses_sorted.append((course, times_list))
+            else:
+                courses_sorted = sorted(courses_on_date.items())
+            
+            for course, times_list in courses_sorted:
                 times_str = ', '.join(times_list)
                 new_availability_html += f"""
                 <div style="background: white; padding: 10px 14px; margin: 4px 0 4px 15px; border-radius: 6px; border-left: 3px solid #4CAF50; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
@@ -240,7 +253,7 @@ def create_html_email_template(subject: str, new_availability: list, all_availab
     return html_template
 
 
-def send_email_notification(subject: str, new_availability: list = None, all_availability: dict = None, time_window: str = "08:00-17:00", config_info: dict = None) -> None:
+def send_email_notification(subject: str, new_availability: list = None, all_availability: dict = None, time_window: str = "08:00-17:00", config_info: dict = None, club_order: list = None) -> None:
     """Send beautiful HTML email notification using SMTP settings from environment variables.
     
     Args:
@@ -309,7 +322,7 @@ def send_email_notification(subject: str, new_availability: list = None, all_ava
             return
         
         # Create HTML email content
-        html_body = create_html_email_template(subject, new_availability, all_availability, time_window)
+        html_body = create_html_email_template(subject, new_availability, all_availability, time_window, config_info, club_order)
         
         # Create plain text fallback
         plain_text_body = f"""Golf Availability Alert
