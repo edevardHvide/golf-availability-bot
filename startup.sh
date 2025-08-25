@@ -3,23 +3,21 @@
 
 echo "🚀 Starting Golf Availability Monitor..."
 
-# Start API server in background
+# Change to streamlit_app directory
 cd streamlit_app
-echo "📡 Starting API server..."
+
+# Start API server in background on port 8000
+echo "📡 Starting API server on port 8000..."
 python api_server.py &
 API_PID=$!
 
-# Wait a moment for API to start
-sleep 3
+# Wait for API to start
+sleep 5
 
 # Start Streamlit on the main port
-echo "🎯 Starting Streamlit interface..."
+echo "🎯 Starting Streamlit interface on port $PORT..."
 exec streamlit run app.py \
   --server.port $PORT \
   --server.address 0.0.0.0 \
   --server.headless true \
   --browser.gatherUsageStats false
-
-# If we get here, something went wrong
-echo "❌ Streamlit exited, stopping API server..."
-kill $API_PID 2>/dev/null

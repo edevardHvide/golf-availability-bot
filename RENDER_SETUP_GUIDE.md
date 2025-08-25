@@ -37,14 +37,19 @@
 pip install -r streamlit_app/requirements.txt && pip install -r requirements.txt
 ```
 
-### **RECOMMENDED Start Command:**
+### **RECOMMENDED Start Command (Both API + Streamlit):**
+```bash
+bash startup.sh
+```
+
+### **Alternative (Streamlit Only):**
 ```bash
 streamlit run streamlit_app/app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true --browser.gatherUsageStats false
 ```
 
-### **Alternative (if above doesn't work):**
+### **Manual Command (Both Services):**
 ```bash
-cd streamlit_app && streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true
+cd streamlit_app && python api_server.py & sleep 3 && streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true --browser.gatherUsageStats false
 ```
 
 ---
