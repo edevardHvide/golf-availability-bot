@@ -42,7 +42,6 @@ cd streamlit_app && streamlit run render_streamlit_app.py --server.address 0.0.0
 ```
 API_BASE_URL=https://golf-availability-api.onrender.com
 ```
-(Replace with your actual API service URL)
 
 ---
 
@@ -62,7 +61,7 @@ https://golf-availability-api.onrender.com/api/database/health
 
 **UI Application:**
 ```
-https://golf-availability-ui.onrender.com
+https://golf-availability-bot-bhgn.onrender.com
 ```
 
 **API Documentation:**
