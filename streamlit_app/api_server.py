@@ -24,6 +24,9 @@ from robust_json_manager import load_user_preferences, save_user_preferences, ge
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Define preferences file path
+PREFERENCES_FILE = Path(__file__).parent / "user_preferences.json"
+
 # Import the golf monitoring functions
 import sys
 sys.path.append(str(Path(__file__).parent.parent))
@@ -104,6 +107,18 @@ async def root():
             "courses": "/api/courses",
             "test_notification": "/api/test-notification"
         }
+    }
+
+@app.get("/api/status")
+async def get_status():
+    """Get system status for the UI."""
+    preferences = load_user_preferences()
+    return {
+        "status": "healthy",
+        "golf_system_available": GOLF_SYSTEM_AVAILABLE,
+        "user_count": len(preferences),
+        "version": "2.0.0",
+        "timestamp": datetime.now().isoformat()
     }
 
 @app.get("/api/courses")
@@ -254,7 +269,7 @@ async def health_check():
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
         "preferences_file_exists": PREFERENCES_FILE.exists(),
-        "user_count": len(load_preferences())
+        "user_count": len(load_user_preferences())
     }
 
 if __name__ == "__main__":
