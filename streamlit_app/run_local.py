@@ -53,17 +53,21 @@ def install_dependencies():
 
 def start_api_server():
     """Start the FastAPI backend server."""
-    print("🚀 Starting API server...")
+    print("🚀 Starting enhanced API server...")
     
     try:
         # Change to the streamlit_app directory
         os.chdir(Path(__file__).parent)
         
+        # Choose the enhanced API server if available
+        api_file = "enhanced_api_server.py" if Path("enhanced_api_server.py").exists() else "api_server.py"
+        
         # Start the API server
         process = subprocess.Popen([
-            sys.executable, "api_server.py"
+            sys.executable, api_file
         ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         
+        print(f"✅ Started {api_file}")
         return process
     except Exception as e:
         print(f"❌ Failed to start API server: {e}")
@@ -71,18 +75,22 @@ def start_api_server():
 
 def start_streamlit_app():
     """Start the Streamlit frontend."""
-    print("🌐 Starting Streamlit app...")
+    print("🌐 Starting enhanced Streamlit app...")
     
     try:
+        # Choose the enhanced app if available
+        app_file = "enhanced_app.py" if Path("enhanced_app.py").exists() else "app.py"
+        
         # Start Streamlit
         process = subprocess.Popen([
-            sys.executable, "-m", "streamlit", "run", "app.py",
+            sys.executable, "-m", "streamlit", "run", app_file,
             "--server.address", "0.0.0.0",
             "--server.port", "8501",
             "--server.enableCORS", "false",
             "--server.enableXsrfProtection", "false"
         ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         
+        print(f"✅ Started {app_file}")
         return process
     except Exception as e:
         print(f"❌ Failed to start Streamlit app: {e}")
@@ -98,8 +106,8 @@ def check_process_health(process, name):
 
 def main():
     """Main function to start both services."""
-    print("🏌️ Golf Availability Monitor - Local Development Server")
-    print("=" * 60)
+    print("🏌️ Golf Availability Monitor - Enhanced Local Development Server")
+    print("=" * 65)
     
     # Install dependencies
     if not install_dependencies():
@@ -126,9 +134,15 @@ def main():
     time.sleep(5)
     
     print("\n✅ Both services are running!")
-    print("📱 Streamlit App: http://localhost:8501")
-    print("🔗 API Documentation: http://localhost:8000/docs")
-    print("💾 API Health Check: http://localhost:8000/health")
+    print("📱 Enhanced Streamlit App: http://localhost:8501")
+    print("🔗 Enhanced API Documentation: http://localhost:8000/docs")
+    print("� System Status: http://localhost:8000/api/status")
+    print("�💾 API Health Check: http://localhost:8000/health")
+    print("\n🔧 Features:")
+    print("  • Robust JSON data storage with automatic backups")
+    print("  • Enhanced error handling and recovery")
+    print("  • Improved user interface with profile management")
+    print("  • Comprehensive system monitoring")
     print("\nPress Ctrl+C to stop all services")
     
     def signal_handler(sig, frame):
@@ -146,9 +160,9 @@ def main():
     try:
         # Monitor both processes
         while True:
-            if not check_process_health(api_process, "API Server"):
+            if not check_process_health(api_process, "Enhanced API Server"):
                 break
-            if not check_process_health(streamlit_process, "Streamlit App"):
+            if not check_process_health(streamlit_process, "Enhanced Streamlit App"):
                 break
             time.sleep(5)
     except KeyboardInterrupt:

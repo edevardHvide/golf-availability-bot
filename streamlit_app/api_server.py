@@ -2,18 +2,27 @@
 FastAPI Backend for Golf Availability Monitor
 
 This provides the API endpoints for the Streamlit frontend to save user preferences
-and integrates with the monitoring system.
+and integrates with the monitoring system. Enhanced with robust JSON handling.
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, EmailStr
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, EmailStr, ValidationError
 from typing import List, Dict, Optional
 import json
 import os
 from pathlib import Path
 from datetime import datetime
 import uvicorn
+import logging
+
+# Import the robust JSON manager
+from robust_json_manager import load_user_preferences, save_user_preferences, get_preferences_stats
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Import the golf monitoring functions
 import sys
@@ -23,14 +32,15 @@ try:
     from golf_utils import send_email_notification
     from golf_club_urls import golf_url_manager
     GOLF_SYSTEM_AVAILABLE = True
+    logger.info("✅ Golf monitoring system available")
 except ImportError:
     GOLF_SYSTEM_AVAILABLE = False
-    print("Warning: Golf monitoring system not available. Running in demo mode.")
+    logger.warning("⚠️ Golf monitoring system not available. Running in demo mode.")
 
 app = FastAPI(
     title="Golf Availability Monitor API",
-    description="API for managing golf tee time monitoring preferences",
-    version="1.0.0"
+    description="API for managing golf tee time monitoring preferences with robust data handling",
+    version="2.0.0"
 )
 
 # Add CORS middleware for Streamlit integration
@@ -62,20 +72,26 @@ class TestNotificationRequest(BaseModel):
     email: EmailStr
     name: str
 
-# Data storage (in production, use a proper database)
-PREFERENCES_FILE = Path(__file__).parent.parent / "user_preferences.json"
-
+# Data storage using robust JSON manager
 def load_preferences() -> Dict:
-    """Load user preferences from file."""
-    if PREFERENCES_FILE.exists():
-        with open(PREFERENCES_FILE, 'r') as f:
-            return json.load(f)
-    return {}
+    """Load user preferences using robust JSON manager."""
+    try:
+        return load_user_preferences()
+    except Exception as e:
+        logger.error(f"Error loading preferences: {e}")
+        return {}
 
 def save_preferences(preferences: Dict):
-    """Save user preferences to file."""
-    with open(PREFERENCES_FILE, 'w') as f:
-        json.dump(preferences, f, indent=2)
+    """Save user preferences using robust JSON manager."""
+    try:
+        success = save_user_preferences(preferences)
+        if not success:
+            logger.error("Failed to save preferences with robust manager")
+            raise Exception("Save operation failed")
+        logger.info(f"Successfully saved preferences for {len(preferences)} users")
+    except Exception as e:
+        logger.error(f"Error saving preferences: {e}")
+        raise
 
 @app.get("/")
 async def root():
