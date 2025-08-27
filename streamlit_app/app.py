@@ -79,17 +79,11 @@ st.markdown("""
         z-index: 1;
     }
     .intro-section {
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c8 100%);
         padding: 1.5rem;
         border-radius: 12px;
-        margin-bottom: 2rem;
-        border-left: 5px solid #667eea;
-    }
-    .intro-steps {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 1rem;
-        margin-top: 1rem;
+        margin-bottom: 1rem;
+        border-left: 5px solid #4CAF50;
     }
     .intro-step {
         background: white;
@@ -97,11 +91,16 @@ st.markdown("""
         border-radius: 8px;
         text-align: center;
         box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        border-top: 3px solid #667eea;
+        border-top: 3px solid #4CAF50;
+        margin-bottom: 1rem;
     }
-    .intro-step h4 {
-        color: #4CAF50;
-        margin-bottom: 0.5rem;
+    .hero-image {
+        border-radius: 15px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+        transition: transform 0.3s ease;
+    }
+    .hero-image:hover {
+        transform: scale(1.02);
     }
     .course-card {
         background: #f8f9fa;
@@ -439,19 +438,37 @@ def main():
     if 'user_preferences' not in st.session_state:
         st.session_state.user_preferences = {}
     
-    # Show enhanced header
-    st.markdown("""
-    <div class="main-header">
-        <h1>🏌️ Golf Availability Monitor</h1>
-        <p>Smart tee time notifications with instant availability checking</p>
-    </div>
-    """, unsafe_allow_html=True)
+    # Show enhanced header with hero image
+    col_header_text, col_header_image = st.columns([2, 1])
+    
+    with col_header_text:
+        st.markdown("""
+        <div class="main-header">
+            <h1>🏌️ Golf Availability Monitor</h1>
+            <p>Smart tee time notifications with instant availability checking</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col_header_image:
+        try:
+            st.markdown('<div class="hero-image">', unsafe_allow_html=True)
+            st.image("./streamlit_app/assets/907d8ed5-d913-4739-8b1e-c66e7231793b.jpg", 
+                    caption="Perfect your swing!", 
+                    use_container_width=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+        except:
+            # Fallback if image not found
+            st.markdown("""
+            <div style="background: #f0f0f0; padding: 2rem; border-radius: 10px; text-align: center;">
+                <h3>🏌️</h3>
+                <p>Golf Image</p>
+            </div>
+            """, unsafe_allow_html=True)
     
     # Quick introduction section
     st.markdown("""
     <div class="intro-section">
-        <h3 style="color: #4CAF50; margin-bottom: 1rem; font-weight: 600;">🚀 Quick Start Guide</h3>
-        <p style="margin-bottom: 1rem; font-size: 1.1rem;">Get personalized golf availability notifications in 3 easy steps:</p>
+        <h3 style="color: #4CAF50; margin-bottom: 1rem;">🚀 Quick Start Guide</h3>
     </div>
     """, unsafe_allow_html=True)
     
@@ -481,13 +498,6 @@ def main():
             <p style="text-align: center; font-size: 0.9rem;">Click "📊 Check Now" for instant results from cached data</p>
         </div>
         """, unsafe_allow_html=True)
-    
-    # How it works explanation
-    st.info("""
-    💡 **How it works:** Your local computer collects availability data hourly, 
-    while this web app shows you instant results filtered for your preferences - 
-    even when your computer is offline!
-    """)
     
     # Sidebar status and profile management
     app.show_status_indicator()
