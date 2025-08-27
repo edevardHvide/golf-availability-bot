@@ -143,7 +143,7 @@ class GolfMonitorApp:
                 '<div class="status-indicator status-warning">🟡 API Offline (Local Mode)</div>',
                 unsafe_allow_html=True
             )
-        else:
+    else:
             st.sidebar.markdown(
                 '<div class="status-indicator status-error">🔴 System Issues</div>',
                 unsafe_allow_html=True
@@ -239,12 +239,12 @@ class GolfMonitorApp:
             FALLBACK_PREFERENCES_FILE.parent.mkdir(parents=True, exist_ok=True)
             with open(FALLBACK_PREFERENCES_FILE, 'w') as f:
                 json.dump(new_data, f, indent=2)
-            
-            return True
-        except Exception as e:
+        
+        return True
+    except Exception as e:
             logger.error(f"Fallback save failed: {e}")
-            return False
-    
+        return False
+
     def get_available_courses(self) -> List[Dict]:
         """Get list of available golf courses."""
         try:
@@ -302,9 +302,9 @@ class GolfMonitorApp:
                     return list(data["users"].keys())
                 else:
                     return list(data.keys())
-        except Exception:
-            pass
-        
+    except Exception:
+        pass
+    
         return []
     
     def send_test_notification(self, email: str, name: str) -> bool:
@@ -320,10 +320,10 @@ class GolfMonitorApp:
                     result = response.json()
                     if result.get("type") == "demo_mode":
                         st.info("📧 Demo Mode: Test notification simulated successfully")
-                    else:
+            else:
                         st.success("📧 Test notification sent successfully!")
                     return True
-                else:
+        else:
                     st.error(f"Failed to send test notification: {response.text}")
         except Exception as e:
             st.error(f"Error sending test notification: {e}")
@@ -365,8 +365,8 @@ class GolfMonitorApp:
                 st.session_state.user_preferences = preferences
                 st.session_state.current_user_email = email_to_load
                 st.success(f"✅ Loaded profile for {preferences.get('name', email_to_load)}")
-                st.rerun()
-            else:
+                        st.rerun()
+                    else:
                 st.warning(f"❌ No profile found for {email_to_load}")
         
         # Show current loaded profile
@@ -381,10 +381,10 @@ class GolfMonitorApp:
             """, unsafe_allow_html=True)
             
             if st.sidebar.button("🗑️ Clear Profile"):
-                st.session_state.user_preferences = {}
+        st.session_state.user_preferences = {}
                 st.session_state.current_user_email = None
-                st.rerun()
-
+        st.rerun()
+    
 def main():
     """Main Streamlit application."""
     
@@ -400,8 +400,8 @@ def main():
     <div class="main-header">
         <h1>🏌️ Golf Availability Monitor</h1>
         <p>Configure your personalized golf tee time notifications</p>
-    </div>
-    """, unsafe_allow_html=True)
+            </div>
+            """, unsafe_allow_html=True)
     
     # Sidebar status and profile management
     app.show_status_indicator()
@@ -489,7 +489,7 @@ def main():
                 available_slots,
                 default=preferences.get('time_slots', []),
                 help="Choose specific time slots you prefer"
-            )
+        )
         
         st.markdown("---")
         
@@ -505,18 +505,18 @@ def main():
                 index=preferences.get('min_players', 1) - 1,
                 help="Minimum number of spots needed for notification"
             )
-            
-            days_ahead = st.slider(
-                "Days to Monitor Ahead",
-                min_value=1,
-                max_value=14,
-                value=preferences.get('days_ahead', 4),
-                help="How many days in advance to check for availability"
-            )
+        
+        days_ahead = st.slider(
+            "Days to Monitor Ahead",
+            min_value=1,
+            max_value=14,
+            value=preferences.get('days_ahead', 4),
+            help="How many days in advance to check for availability"
+        )
         
         with col_settings2:
-            notification_frequency = st.selectbox(
-                "Notification Frequency",
+        notification_frequency = st.selectbox(
+            "Notification Frequency",
                 ["immediate", "hourly", "daily"],
                 index=["immediate", "hourly", "daily"].index(
                     preferences.get('notification_frequency', 'immediate')
@@ -547,23 +547,23 @@ def main():
         col_save1, col_save2, col_save3 = st.columns(3)
         
         with col_save1:
-            if st.button("💾 Save Profile", disabled=not is_valid, use_container_width=True):
-                # Check if this is an existing user
+        if st.button("💾 Save Profile", disabled=not is_valid, use_container_width=True):
+            # Check if this is an existing user
                 existing_prefs = app.load_preferences_from_api(email)
                 is_existing_user = bool(existing_prefs)
                 
                 # Create preferences object
-                new_preferences = {
-                    'name': name,
-                    'email': email,
-                    'selected_courses': selected_courses,
+            new_preferences = {
+                'name': name,
+                'email': email,
+                'selected_courses': selected_courses,
                     'time_slots': time_slots,
-                    'min_players': min_players,
-                    'days_ahead': days_ahead,
-                    'notification_frequency': notification_frequency,
-                    'timestamp': datetime.now().isoformat()
-                }
-                
+                'min_players': min_players,
+                'days_ahead': days_ahead,
+                'notification_frequency': notification_frequency,
+                'timestamp': datetime.now().isoformat()
+            }
+            
                 # Save preferences
                 success = app.save_preferences_to_api(new_preferences)
                 
@@ -580,7 +580,7 @@ def main():
                     st.error("❌ Failed to save profile. Please try again.")
         
         with col_save2:
-            if st.button("🧪 Test Notification", disabled=not (name and email), use_container_width=True):
+        if st.button("🧪 Test Notification", disabled=not (name and email), use_container_width=True):
                 app.send_test_notification(email, name)
         
         with col_save3:
@@ -629,7 +629,7 @@ def main():
                 st.success("🟢 Golf System Available")
             else:
                 st.warning("🔶 Golf System in Demo Mode")
-        else:
+            else:
             st.warning("🟡 API Offline - Local Mode")
             st.info("💡 Data will be saved locally")
 

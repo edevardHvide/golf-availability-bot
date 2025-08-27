@@ -430,6 +430,8 @@ async def main():
                        help="Minimum number of available slots required (default: 1)")
     parser.add_argument("--days", type=int, default=4,
                        help="Number of days to check from today (default: 4)")
+    parser.add_argument("--local", action="store_true", 
+                       help="Run in local mode - skip API/UI, use only CLI arguments and environment variables")
     args = parser.parse_args()
     
     # Parse time window
@@ -443,8 +445,13 @@ async def main():
     console.print("🏌️ Golf Availability Monitor - Personalized Edition", style="bold blue")
     console.print("=" * 60)
     
-    # Load user preferences from cloud API first
-    user_preferences = get_user_preferences()
+    # Check if running in local mode
+    if args.local:
+        console.print("🏠 Running in LOCAL MODE - skipping API/UI, using CLI arguments only", style="bold yellow")
+        user_preferences = []
+    else:
+        # Load user preferences from cloud API first
+        user_preferences = get_user_preferences()
     if user_preferences:
         console.print(f"👥 Running personalized monitoring for {len(user_preferences)} users:", style="blue")
         for user in user_preferences:
