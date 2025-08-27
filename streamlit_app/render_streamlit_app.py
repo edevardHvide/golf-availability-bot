@@ -348,9 +348,9 @@ def main():
     col_header_text, col_header_image = st.columns([2, 1])
     
     with col_header_text:
-    st.markdown("""
-    <div class="main-header">
-        <h1>🏌️ Golf Availability Monitor</h1>
+        st.markdown("""
+        <div class="main-header">
+            <h1>🏌️ Golf Availability Monitor</h1>
             <p>Smart tee time notifications with instant availability checking</p>
         </div>
         """, unsafe_allow_html=True)
