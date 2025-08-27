@@ -11,12 +11,22 @@ from typing import List, Dict
 
 # Try to import from parent directory
 try:
-    sys.path.append(str(Path(__file__).parent.parent))
+    # Add parent directory to path
+    parent_dir = Path(__file__).parent.parent
+    if str(parent_dir) not in sys.path:
+        sys.path.insert(0, str(parent_dir))
+    
     from golf_club_urls import golf_url_manager
     GOLF_SYSTEM_AVAILABLE = True
-except ImportError:
+    print(f"✅ Successfully imported golf_url_manager with {len(golf_url_manager.clubs)} clubs")
+except ImportError as e:
     GOLF_SYSTEM_AVAILABLE = False
     golf_url_manager = None
+    print(f"⚠️ Failed to import golf_url_manager: {e}")
+except Exception as e:
+    GOLF_SYSTEM_AVAILABLE = False
+    golf_url_manager = None
+    print(f"⚠️ Error accessing golf_url_manager: {e}")
 
 def get_available_courses() -> List[Dict]:
     """Get available golf courses with consistent format."""
@@ -24,19 +34,33 @@ def get_available_courses() -> List[Dict]:
     if GOLF_SYSTEM_AVAILABLE and golf_url_manager:
         try:
             courses = []
-            for key, club in golf_url_manager.clubs.items():
-                courses.append({
-                    'key': key,
-                    'name': club.display_name,
-                    'location': f"{club.location[0]:.2f}, {club.location[1]:.2f}" if club.location else "Unknown",
-                    'default_start_time': f"{club.default_start_time[:2]}:{club.default_start_time[2:4]}" if len(club.default_start_time) >= 4 else "07:00"
-                })
+            clubs_dict = golf_url_manager.clubs
+            print(f"📊 Processing {len(clubs_dict)} clubs from golf_url_manager")
+            
+            for key, club in clubs_dict.items():
+                try:
+                    course_data = {
+                        'key': key,
+                        'name': club.display_name,
+                        'location': f"{club.location[0]:.2f}, {club.location[1]:.2f}" if club.location else "Unknown",
+                        'default_start_time': f"{club.default_start_time[:2]}:{club.default_start_time[2:4]}" if len(club.default_start_time) >= 4 else "07:00"
+                    }
+                    courses.append(course_data)
+                except Exception as club_error:
+                    print(f"⚠️ Error processing club {key}: {club_error}")
+                    continue
             
             # Sort by name for better UX
-            return sorted(courses, key=lambda x: x['name'])
+            sorted_courses = sorted(courses, key=lambda x: x['name'])
+            print(f"✅ Successfully loaded {len(sorted_courses)} courses from golf_url_manager")
+            return sorted_courses
             
         except Exception as e:
-            print(f"Error loading from golf_url_manager: {e}")
+            print(f"❌ Error loading from golf_url_manager: {e}")
+            print(f"   GOLF_SYSTEM_AVAILABLE: {GOLF_SYSTEM_AVAILABLE}")
+            print(f"   golf_url_manager: {golf_url_manager}")
+    else:
+        print(f"📋 Using fallback courses (GOLF_SYSTEM_AVAILABLE: {GOLF_SYSTEM_AVAILABLE})")
     
     # Fallback courses if golf system is not available
     return [

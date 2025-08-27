@@ -557,8 +557,81 @@ async def run_immediate_check(args, time_window, window_str):
         finally:
             await browser.close()
 
+async def save_results_to_database(results: Dict, check_type: str = "scheduled"):
+    """Save availability results to database for offline access"""
+    try:
+        # Try to import and use PostgreSQL manager
+        sys.path.append(str(Path(__file__).parent / "streamlit_app"))
+        from postgresql_manager import get_db_manager
+        
+        db_manager = get_db_manager()
+        
+        # Extract data for database
+        availability_data = results.get("availability", {})
+        new_availability = results.get("new_availability", [])
+        
+        # Calculate statistics
+        total_slots = 0
+        courses_checked = set()
+        
+        for state_key, times in availability_data.items():
+            if '_' in state_key:
+                course_name = state_key.split('_')[0]
+                courses_checked.add(course_name)
+                total_slots += len(times) if times else 0
+        
+        # Determine date range from state keys
+        dates_found = set()
+        for key in availability_data.keys():
+            if '_' in key:
+                date_part = key.split('_')[-1]
+                if len(date_part) == 10:  # YYYY-MM-DD format
+                    dates_found.add(date_part)
+        
+        if not dates_found:
+            # Fallback to today and next few days
+            from datetime import date, timedelta
+            today = date.today()
+            dates_found = {(today + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(4)}
+        
+        date_range_start = min(dates_found) if dates_found else date.today().strftime('%Y-%m-%d')
+        date_range_end = max(dates_found) if dates_found else date.today().strftime('%Y-%m-%d')
+        
+        # Prepare cache data
+        cache_data = {
+            'check_type': check_type,
+            'user_email': None,  # System-wide cache for scheduled checks
+            'availability_data': availability_data,
+            'courses_checked': list(courses_checked),
+            'date_range_start': date_range_start,
+            'date_range_end': date_range_end,
+            'total_courses': len(courses_checked),
+            'total_availability_slots': total_slots,
+            'new_availability_count': len(new_availability),
+            'check_duration_seconds': results.get("duration_seconds"),
+            'success': results.get("success", True),
+            'error_message': results.get("error"),
+            'metadata': {
+                'new_availability': new_availability,
+                'check_timestamp': results.get("timestamp"),
+                'total_dates': results.get("total_dates", len(dates_found))
+            }
+        }
+        
+        # Save to database
+        success = db_manager.save_cached_availability(cache_data)
+        if success:
+            console.print(f"✅ Results saved to database for offline access", style="green")
+        else:
+            console.print(f"⚠️ Failed to save results to database", style="yellow")
+            
+    except Exception as e:
+        console.print(f"⚠️ Could not save to database: {e}", style="dim")
+
 async def perform_availability_check(args, time_window, window_str, user_preferences, previous_state, context):
     """Perform the actual availability check - extracted for reuse"""
+    
+    start_time = datetime.datetime.now()
     
     # Determine which clubs to monitor
     if user_preferences:
@@ -650,15 +723,26 @@ async def perform_availability_check(args, time_window, window_str, user_prefere
             )
             console.print("Generic email notification sent!", style="green")
     
+    # Calculate duration
+    end_time = datetime.datetime.now()
+    duration = (end_time - start_time).total_seconds()
+    
     # Return results for API use
-    return {
+    results = {
         "success": True,
-        "timestamp": datetime.datetime.now().isoformat(),
+        "timestamp": end_time.isoformat(),
         "availability": current_state,
         "new_availability": new_availability,
         "total_courses": len(labels),
-        "total_dates": len(dates_to_check)
+        "total_dates": len(dates_to_check),
+        "duration_seconds": duration
     }
+    
+    # Save results to database for offline access
+    check_type = "immediate" if hasattr(args, 'immediate') and args.immediate else "scheduled"
+    await save_results_to_database(results, check_type)
+    
+    return results
 
 async def main():
     """Main monitoring loop."""

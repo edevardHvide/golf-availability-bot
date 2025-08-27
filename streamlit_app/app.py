@@ -257,18 +257,8 @@ class GolfMonitorApp:
             return False
 
     def get_available_courses(self) -> List[Dict]:
-        """Get list of available golf courses."""
-        try:
-            if self.api_available:
-                response = requests.get(f"{API_BASE_URL}/api/courses", timeout=5)
-                if response.status_code == 200:
-                    data = response.json()
-                    courses = data.get("courses", [])
-                    return courses
-        except Exception as e:
-            logger.warning(f"Failed to get courses from API: {e}")
-        
-        # Use local golf course data as fallback
+        """Get list of available golf courses - using static data for efficiency."""
+        # Golf courses rarely change, so we keep them static for better performance
         return get_available_courses()
     
     def generate_time_slots(self) -> List[str]:

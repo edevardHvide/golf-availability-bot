@@ -161,9 +161,24 @@ async def get_system_status():
 async def get_courses():
     """Get available golf courses."""
     try:
-        if GOLF_SYSTEM_AVAILABLE:
+        if GOLF_SYSTEM_AVAILABLE and golf_url_manager:
             try:
-                courses = golf_url_manager.get_all_courses()
+                # Get all clubs from golf_url_manager
+                all_clubs = golf_url_manager.get_all_clubs()
+                
+                # Convert to the expected format
+                courses = []
+                for club in all_clubs:
+                    courses.append({
+                        'key': club.name,  # The key used in the system
+                        'name': club.display_name,
+                        'location': f"{club.location[0]:.2f}, {club.location[1]:.2f}" if club.location else "Unknown",
+                        'default_start_time': f"{club.default_start_time[:2]}:{club.default_start_time[2:4]}" if len(club.default_start_time) >= 4 else "07:00"
+                    })
+                
+                # Sort by name for better UX
+                courses = sorted(courses, key=lambda x: x['name'])
+                
                 return {
                     "courses": courses,
                     "source": "golf_system",
@@ -172,14 +187,14 @@ async def get_courses():
             except Exception as e:
                 logger.warning(f"Golf system error, using fallback: {e}")
         
-        # Fallback courses for demo mode
+        # Fallback courses for demo mode - using consistent format
         fallback_courses = [
-            {"id": "oslo_golfklubb", "name": "Oslo Golfklubb", "location": "Oslo"},
-            {"id": "miklagard_gk", "name": "Miklagard Golf Club", "location": "Bærum"},
-            {"id": "bogstad_golfklubb", "name": "Bogstad Golfklubb", "location": "Oslo"},
-            {"id": "drammen_golfklubb", "name": "Drammen Golfklubb", "location": "Drammen"},
-            {"id": "holmestrand_golfklubb", "name": "Holmestrand Golfklubb", "location": "Holmestrand"},
-            {"id": "kongsberg_golfklubb", "name": "Kongsberg Golfklubb", "location": "Kongsberg"}
+            {"key": "oslo_golfklubb", "name": "Oslo Golfklubb", "location": "59.91, 10.75", "default_start_time": "07:30"},
+            {"key": "miklagard_gk", "name": "Miklagard GK", "location": "59.97, 11.04", "default_start_time": "07:00"},
+            {"key": "baerum_gk", "name": "Bærum GK", "location": "59.89, 10.52", "default_start_time": "06:00"},
+            {"key": "asker_golfklubb", "name": "Asker Golfklubb", "location": "59.84, 10.44", "default_start_time": "07:00"},
+            {"key": "kongsberg_golfklubb", "name": "Kongsberg Golfklubb", "location": "59.67, 9.65", "default_start_time": "06:00"},
+            {"key": "losby_golfklubb", "name": "Losby Golfklubb", "location": "59.92, 10.96", "default_start_time": "07:00"}
         ]
         
         return {

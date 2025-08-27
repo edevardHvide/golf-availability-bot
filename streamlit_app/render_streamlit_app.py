@@ -174,16 +174,8 @@ class GolfMonitorUI:
             return False, f"Connection error: {e}"
     
     def get_available_courses(self) -> List[Dict]:
-        """Get available courses from API service."""
-        try:
-            response = requests.get(f"{API_BASE_URL}/api/courses", timeout=5)
-            if response.status_code == 200:
-                data = response.json()
-                return data.get("courses", [])
-        except Exception as e:
-            logger.warning(f"Failed to get courses from API: {e}")
-        
-        # Use local golf course data as fallback
+        """Get available golf courses - using static data for efficiency."""
+        # Golf courses rarely change, so we keep them static for better performance
         return get_available_courses()
     
     def get_existing_users(self) -> List[str]:
@@ -606,6 +598,10 @@ def main():
         with col_save2:
             if st.button("🧪 Test Notification", disabled=not (name and email), use_container_width=True):
                 ui.send_test_notification(email, name)
+        
+        # Show cached availability when valid profile exists
+        if name and email and selected_courses and time_slots:
+            show_cached_availability_offline(email)
     
     with col2:
         # Summary panel
@@ -648,8 +644,70 @@ def main():
                 
                 if total_intervals == 0 and time_slots:
                     st.markdown(f"• Using preset ranges: {len(set(time_slots))} time slots")
-        
 
+def show_cached_availability_offline(user_email: str):
+    """Show cached availability results when local computer is offline"""
+    try:
+        # Try to get cached results from API
+        response = requests.get(f"{API_BASE_URL}/api/cached-availability", 
+                               params={"user_email": user_email, "hours_limit": 48}, 
+                               timeout=5)
+        
+        if response.status_code == 200:
+            data = response.json()
+            
+            if data.get("success") and data.get("cached"):
+                st.markdown("---")
+                st.markdown("### 📊 Latest Availability (Cached)")
+                st.info(f"💾 {data.get('message', 'Showing cached results')}")
+                
+                availability = data.get("availability", {})
+                new_availability = data.get("new_availability", [])
+                
+                if availability:
+                    # Show availability by date
+                    dates_found = set()
+                    for key in availability.keys():
+                        if '_' in key:
+                            date_part = key.split('_')[-1]
+                            dates_found.add(date_part)
+                    
+                    for date_str in sorted(dates_found):
+                        st.markdown(f"**{date_str}:**")
+                        
+                        date_availability = {k: v for k, v in availability.items() if k.endswith(f"_{date_str}")}
+                        
+                        if any(date_availability.values()):
+                            for state_key, times in date_availability.items():
+                                if times:
+                                    course_name = state_key.replace(f"_{date_str}", "")
+                                    times_str = ", ".join([f"{t}({c})" for t, c in sorted(times.items())])
+                                    st.success(f"✅ {course_name}: {times_str}")
+                        else:
+                            st.info("🚫 No availability found for this date")
+                    
+                    # Show new availability if any
+                    if new_availability:
+                        st.markdown("**🎆 Recent New Availability:**")
+                        for item in new_availability:
+                            st.success(f"✨ {item}")
+                else:
+                    st.info("🚫 No cached availability data found.")
+                    
+                # Show cache info
+                with st.expander("📋 Cache Information"):
+                    st.write(f"**Check Type:** {data.get('check_type', 'unknown')}")
+                    st.write(f"**Total Courses:** {data.get('total_courses', 0)}")
+                    st.write(f"**Total Slots:** {data.get('total_availability_slots', 0)}")
+                    date_range = data.get('date_range', {})
+                    st.write(f"**Date Range:** {date_range.get('start', 'unknown')} to {date_range.get('end', 'unknown')}")
+            else:
+                st.info("💾 No recent cached results available. Results will be cached when your local computer runs a check.")
+        
+    except requests.exceptions.ConnectionError:
+        st.warning("⚠️ Cannot connect to API to retrieve cached results.")
+    except Exception as e:
+        st.error(f"❌ Error retrieving cached results: {e}")
 
 if __name__ == "__main__":
     main()

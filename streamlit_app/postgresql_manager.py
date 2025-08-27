@@ -126,6 +126,31 @@ class PostgreSQLManager:
             timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
         );
         
+        -- Cached availability results table
+        CREATE TABLE IF NOT EXISTS cached_availability (
+            id SERIAL PRIMARY KEY,
+            check_type VARCHAR(50) NOT NULL, -- 'scheduled', 'immediate', 'manual'
+            check_timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            user_email VARCHAR(255) REFERENCES user_preferences(email) ON DELETE CASCADE,
+            availability_data JSONB NOT NULL,
+            courses_checked TEXT[] NOT NULL,
+            date_range_start DATE NOT NULL,
+            date_range_end DATE NOT NULL,
+            total_courses INTEGER DEFAULT 0,
+            total_availability_slots INTEGER DEFAULT 0,
+            new_availability_count INTEGER DEFAULT 0,
+            check_duration_seconds NUMERIC(8,2),
+            success BOOLEAN DEFAULT TRUE,
+            error_message TEXT,
+            metadata JSONB DEFAULT '{}'::jsonb
+        );
+        
+        -- Create indexes for cached availability
+        CREATE INDEX IF NOT EXISTS idx_cached_availability_timestamp ON cached_availability(check_timestamp DESC);
+        CREATE INDEX IF NOT EXISTS idx_cached_availability_user_email ON cached_availability(user_email);
+        CREATE INDEX IF NOT EXISTS idx_cached_availability_check_type ON cached_availability(check_type);
+        CREATE INDEX IF NOT EXISTS idx_cached_availability_date_range ON cached_availability(date_range_start, date_range_end);
+        
         -- Create function to update updated_at timestamp
         CREATE OR REPLACE FUNCTION update_updated_at_column()
         RETURNS TRIGGER AS $$
@@ -377,6 +402,97 @@ class PostgreSQLManager:
             logger.error(f"❌ Failed to log system status: {e}")
             return False
     
+    def save_cached_availability(self, check_data: Dict) -> bool:
+        """Save availability check results to cache."""
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        INSERT INTO cached_availability (
+                            check_type, user_email, availability_data, courses_checked,
+                            date_range_start, date_range_end, total_courses, 
+                            total_availability_slots, new_availability_count,
+                            check_duration_seconds, success, error_message, metadata
+                        ) VALUES (
+                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        )
+                    """, (
+                        check_data.get('check_type'),
+                        check_data.get('user_email'),
+                        Json(check_data.get('availability_data', {})),
+                        check_data.get('courses_checked', []),
+                        check_data.get('date_range_start'),
+                        check_data.get('date_range_end'),
+                        check_data.get('total_courses', 0),
+                        check_data.get('total_availability_slots', 0),
+                        check_data.get('new_availability_count', 0),
+                        check_data.get('check_duration_seconds'),
+                        check_data.get('success', True),
+                        check_data.get('error_message'),
+                        Json(check_data.get('metadata', {}))
+                    ))
+                    
+                    conn.commit()
+                    logger.info(f"✅ Saved cached availability for {check_data.get('user_email', 'system')}")
+                    return True
+        except Exception as e:
+            logger.error(f"❌ Error saving cached availability: {e}")
+            return False
+    
+    def get_latest_cached_availability(self, user_email: str = None, hours_limit: int = 24) -> Optional[Dict]:
+        """Get the most recent cached availability results."""
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                    if user_email:
+                        cursor.execute("""
+                            SELECT * FROM cached_availability 
+                            WHERE user_email = %s 
+                            AND check_timestamp > NOW() - INTERVAL %s
+                            AND success = TRUE
+                            ORDER BY check_timestamp DESC 
+                            LIMIT 1
+                        """, (user_email, f"{hours_limit} hours"))
+                    else:
+                        cursor.execute("""
+                            SELECT * FROM cached_availability 
+                            WHERE check_timestamp > NOW() - INTERVAL %s
+                            AND success = TRUE
+                            ORDER BY check_timestamp DESC 
+                            LIMIT 1
+                        """, (f"{hours_limit} hours",))
+                    
+                    result = cursor.fetchone()
+                    return dict(result) if result else None
+        except Exception as e:
+            logger.error(f"❌ Error getting cached availability: {e}")
+            return None
+    
+    def get_cached_availability_history(self, user_email: str = None, limit: int = 10) -> List[Dict]:
+        """Get history of cached availability results."""
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                    if user_email:
+                        cursor.execute("""
+                            SELECT * FROM cached_availability 
+                            WHERE user_email = %s 
+                            ORDER BY check_timestamp DESC 
+                            LIMIT %s
+                        """, (user_email, limit))
+                    else:
+                        cursor.execute("""
+                            SELECT * FROM cached_availability 
+                            ORDER BY check_timestamp DESC 
+                            LIMIT %s
+                        """, (limit,))
+                    
+                    results = cursor.fetchall()
+                    return [dict(result) for result in results]
+        except Exception as e:
+            logger.error(f"❌ Error getting cached availability history: {e}")
+            return []
+    
     def cleanup_old_data(self, days: int = 30) -> bool:
         """Clean up old monitoring sessions and system status logs."""
         try:
@@ -396,9 +512,16 @@ class PostgreSQLManager:
                     """, (days,))
                     status_deleted = cur.rowcount
                     
+                    # Clean old cached availability (keep recent ones)
+                    cur.execute("""
+                        DELETE FROM cached_availability 
+                        WHERE check_timestamp < NOW() - INTERVAL '%s days'
+                    """, (days,))
+                    cache_deleted = cur.rowcount
+                    
                     conn.commit()
                     
-                    logger.info(f"✅ Cleanup: {sessions_deleted} sessions, {status_deleted} status logs deleted")
+                    logger.info(f"✅ Cleanup: {sessions_deleted} sessions, {status_deleted} status logs, {cache_deleted} cached results deleted")
                     return True
                     
         except Exception as e:
