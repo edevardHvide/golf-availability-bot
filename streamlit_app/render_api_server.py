@@ -78,14 +78,19 @@ app.add_middleware(
 )
 
 # Pydantic models
+class TimePreferences(BaseModel):
+    time_slots: List[str] = []
+    time_intervals: List[str] = []
+    method: str = "Preset Ranges"
+
 class UserPreferences(BaseModel):
     name: str
     email: EmailStr
     selected_courses: List[str]
-    time_slots: List[str]
+    time_preferences: Dict[str, TimePreferences] = {}
+    preference_type: str = "Same for all days"
     min_players: int = 1
     days_ahead: int = 4
-    notification_frequency: str = "immediate"
 
 class PreferencesResponse(BaseModel):
     success: bool
@@ -201,31 +206,6 @@ def get_storage_stats() -> Dict:
             return {"type": "json", "status": "error", "error": str(e)}
     else:
         return {"type": "none", "status": "unavailable"}
-    try:
-        import json
-        prefs_file = Path("user_preferences.json")
-        if prefs_file.exists():
-            with open(prefs_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            
-            # Handle both old and new format
-            if isinstance(data, dict):
-                if "users" in data:
-                    return data["users"]
-                else:
-                    return data
-        return {}
-    except Exception as e:
-        logger.error(f"Fallback JSON load failed: {e}")
-        return {}
-
-def save_preferences_fallback(preferences: Dict) -> bool:
-    """Legacy save function - replaced by save_preferences."""
-    return save_preferences(preferences)
-        
-    except Exception as e:
-        logger.error(f"Fallback JSON save failed: {e}")
-        return False
 
 # API Routes
 @app.get("/")
@@ -245,7 +225,7 @@ async def root():
             "documentation": "/docs"
         },
         "golf_system": "available" if GOLF_SYSTEM_AVAILABLE else "demo_mode",
-        "robust_json": ROBUST_JSON_AVAILABLE
+        "database_type": DATABASE_TYPE
     }
 
 @app.get("/health")
@@ -264,8 +244,9 @@ async def get_system_status():
     try:
         user_prefs = load_preferences()
         backup_count = 0
+        robust_json_available = DATABASE_TYPE == "json" and 'get_preferences_stats' in globals()
         
-        if ROBUST_JSON_AVAILABLE:
+        if robust_json_available:
             try:
                 stats = get_preferences_stats()
                 backup_count = stats.get("backup_count", 0)
@@ -276,7 +257,7 @@ async def get_system_status():
             status="healthy",
             timestamp=datetime.now().isoformat(),
             golf_system_available=GOLF_SYSTEM_AVAILABLE,
-            robust_json_available=ROBUST_JSON_AVAILABLE,
+            robust_json_available=robust_json_available,
             user_count=len(user_prefs),
             backup_count=backup_count,
             version="2.1.0",
@@ -348,7 +329,7 @@ async def get_all_preferences():
             "preferences": preferences,
             "user_count": len(preferences),
             "last_updated": last_updated,
-            "robust_json": ROBUST_JSON_AVAILABLE,
+            "database_type": DATABASE_TYPE,
             "service": "render_api"
         }
     except Exception as e:
@@ -385,10 +366,10 @@ async def save_user_preferences_endpoint(user_prefs: UserPreferences):
             "name": user_prefs.name,
             "email": user_prefs.email,
             "selected_courses": user_prefs.selected_courses,
-            "time_slots": user_prefs.time_slots,
+            "time_preferences": {k: v.dict() for k, v in user_prefs.time_preferences.items()},
+            "preference_type": user_prefs.preference_type,
             "min_players": user_prefs.min_players,
             "days_ahead": user_prefs.days_ahead,
-            "notification_frequency": user_prefs.notification_frequency,
             "timestamp": datetime.now().isoformat(),
             "source": "render_api"
         }
@@ -476,7 +457,8 @@ async def send_test_notification(request: TestNotificationRequest):
 @app.post("/api/backup")
 async def create_backup():
     """Create a manual backup if robust JSON is available."""
-    if not ROBUST_JSON_AVAILABLE:
+    robust_json_available = DATABASE_TYPE == "json" and 'preferences_manager' in globals()
+    if not robust_json_available:
         return {
             "success": False,
             "message": "Backup functionality requires robust JSON manager",

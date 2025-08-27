@@ -32,6 +32,15 @@ from golf_club_urls import golf_url_manager
 load_dotenv(override=True)
 console = Console()
 
+# Import weekday/weekend utility functions
+sys.path.append(str(Path(__file__).parent / "streamlit_app"))
+try:
+    from time_utils import get_time_slots_for_date
+    WEEKDAY_WEEKEND_SUPPORT = True
+except ImportError:
+    WEEKDAY_WEEKEND_SUPPORT = False
+    console.print("⚠️ Weekday/weekend support not available - using legacy time slot format", style="yellow")
+
 # No longer using saved sessions
 
 async def check_login_status(page: Page) -> bool:
@@ -311,12 +320,26 @@ def get_user_preferences() -> List[Dict]:
         return []
 
 def filter_availability_for_user(user_prefs: Dict, all_availability: Dict, target_date: datetime.date) -> Dict[str, Dict[str, int]]:
-    """Filter availability results based on user preferences."""
+    """Filter availability results based on user preferences with weekday/weekend support."""
     filtered = {}
     
     # Get user's preferred courses
     user_courses = user_prefs.get('selected_courses', [])
-    user_time_slots = user_prefs.get('time_slots', [])
+    
+    # Get time slots based on weekday/weekend preferences if supported
+    if WEEKDAY_WEEKEND_SUPPORT:
+        try:
+            user_time_slots = get_time_slots_for_date(user_prefs, target_date)
+            preference_type = user_prefs.get('preference_type', 'Same for all days')
+            day_type = "weekend" if target_date.weekday() >= 5 else "weekday"
+            console.print(f"    Using {preference_type} preferences for {day_type} ({target_date}): {len(user_time_slots)} time slots", style="dim")
+        except Exception as e:
+            console.print(f"⚠️ Error getting weekday/weekend time slots, falling back to legacy format: {e}", style="yellow")
+            user_time_slots = user_prefs.get('time_slots', [])
+    else:
+        # Fallback to legacy format
+        user_time_slots = user_prefs.get('time_slots', [])
+    
     min_players = user_prefs.get('min_players', 1)
     
     date_str = target_date.strftime('%Y-%m-%d')

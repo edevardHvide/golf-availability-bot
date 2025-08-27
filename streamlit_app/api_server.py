@@ -56,14 +56,19 @@ app.add_middleware(
 )
 
 # Pydantic models for request/response
+class TimePreferences(BaseModel):
+    time_slots: List[str] = []
+    time_intervals: List[str] = []
+    method: str = "Preset Ranges"
+
 class UserPreferences(BaseModel):
     name: str
     email: EmailStr
     selected_courses: List[str]
-    time_slots: List[str]
+    time_preferences: Dict[str, TimePreferences] = {}
+    preference_type: str = "Same for all days"
     min_players: int = 1
     days_ahead: int = 4
-    notification_frequency: str = "immediate"
     timestamp: Optional[str] = None
 
 class PreferencesResponse(BaseModel):
@@ -250,7 +255,7 @@ async def get_all_preferences():
         
         last_updated = "Never"
         if all_preferences:
-            timestamps = [p.get('timestamp', '') for p in all_preferences.values()]
+            timestamps = [p.get('timestamp', '') for p in all_preferences.values() if isinstance(p, dict)]
             last_updated = max(t for t in timestamps if t) or "Never"
         
         return {

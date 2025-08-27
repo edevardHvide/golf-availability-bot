@@ -14,6 +14,10 @@ from datetime import datetime
 from typing import Dict, List
 import logging
 
+# Import golf course data and time utilities
+from golf_courses import get_available_courses
+from time_utils import validate_time_preferences, format_preferences_summary
+
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -41,17 +45,7 @@ st.markdown("""
         text-align: center;
         margin-bottom: 2rem;
     }
-    .service-indicator {
-        position: fixed;
-        top: 10px;
-        right: 10px;
-        background: rgba(76, 175, 80, 0.9);
-        color: white;
-        padding: 0.5rem 1rem;
-        border-radius: 20px;
-        font-size: 0.8rem;
-        z-index: 1000;
-    }
+
     .status-healthy { background: #d4edda; color: #155724; padding: 0.5rem; border-radius: 5px; }
     .status-warning { background: #fff3cd; color: #856404; padding: 0.5rem; border-radius: 5px; }
     .status-error { background: #f8d7da; color: #721c24; padding: 0.5rem; border-radius: 5px; }
@@ -105,39 +99,47 @@ class GolfMonitorUI:
             "version": "unknown"
         }
     
-    def show_service_indicator(self):
-        """Show service indicator."""
-        st.markdown(
-            '<div class="service-indicator">🎨 UI Service</div>',
-            unsafe_allow_html=True
-        )
+
     
     def show_connection_status(self):
         """Show API connection status in sidebar."""
-        st.sidebar.markdown("### 🔗 Service Status")
+        st.sidebar.markdown("### 🔗 Connection Status")
         
         if self.api_available:
             st.sidebar.markdown(
                 '<div class="status-healthy">🟢 API Connected</div>',
                 unsafe_allow_html=True
             )
-            st.sidebar.markdown(f"**API URL:** `{API_BASE_URL}`")
             
             if self.system_status:
                 st.sidebar.metric("Active Users", self.system_status.get("user_count", 0))
                 
                 golf_status = "✅ Available" if self.system_status.get("golf_system_available") else "🔶 Demo Mode"
                 st.sidebar.markdown(f"**Golf System:** {golf_status}")
-                
-                version = self.system_status.get("version", "unknown")
-                st.sidebar.markdown(f"**API Version:** {version}")
         else:
             st.sidebar.markdown(
                 '<div class="status-error">🔴 API Unavailable</div>',
                 unsafe_allow_html=True
             )
-            st.sidebar.markdown(f"**API URL:** `{API_BASE_URL}`")
             st.sidebar.error("Cannot connect to API service. Please check the API service status.")
+    
+    def show_service_info(self):
+        """Show service information at bottom of sidebar."""
+        st.sidebar.markdown("### 🔧 Service Info")
+        
+        if self.api_available:
+            st.sidebar.success("🟢 Two-Service Architecture")
+            st.sidebar.markdown("**UI Service:** Running")
+            st.sidebar.markdown("**API Service:** Connected")
+            st.sidebar.markdown(f"**API URL:** `{API_BASE_URL}`")
+        else:
+            st.sidebar.warning("🟡 UI Service Only")
+            st.sidebar.markdown("**UI Service:** Running")
+            st.sidebar.markdown("**API Service:** Disconnected")
+        
+        if self.system_status:
+            version = self.system_status.get("version", "unknown")
+            st.sidebar.markdown(f"**Version:** {version}")
     
     def load_user_preferences(self, email: str) -> Dict:
         """Load user preferences from API service."""
@@ -181,15 +183,8 @@ class GolfMonitorUI:
         except Exception as e:
             logger.warning(f"Failed to get courses from API: {e}")
         
-        # Fallback courses if API is unavailable
-        return [
-            {'key': 'oslo_golfklubb', 'name': 'Oslo Golfklubb', 'location': '59.91, 10.75', 'default_start_time': '07:00'},
-            {'key': 'miklagard_gk', 'name': 'Miklagard GK', 'location': '59.97, 11.04', 'default_start_time': '07:00'},
-            {'key': 'baerum_gk', 'name': 'Bærum GK', 'location': '59.89, 10.52', 'default_start_time': '06:00'},
-            {'key': 'bogstad_golfklubb', 'name': 'Bogstad Golfklubb', 'location': '59.95, 10.63', 'default_start_time': '07:00'},
-            {'key': 'asker_golfklubb', 'name': 'Asker Golfklubb', 'location': '59.83, 10.43', 'default_start_time': '07:00'},
-            {'key': 'drammen_golfklubb', 'name': 'Drammen Golfklubb', 'location': '59.74, 10.20', 'default_start_time': '07:00'},
-        ]
+        # Use local golf course data as fallback
+        return get_available_courses()
     
     def get_existing_users(self) -> List[str]:
         """Get list of existing user emails."""
@@ -297,8 +292,7 @@ def main():
     # Initialize the UI
     ui = GolfMonitorUI()
     
-    # Show service indicator
-    ui.show_service_indicator()
+
     
     # Initialize session state
     if 'user_preferences' not in st.session_state:
@@ -309,13 +303,17 @@ def main():
     <div class="main-header">
         <h1>🏌️ Golf Availability Monitor</h1>
         <p>Configure your personalized golf tee time notifications</p>
-        <small>Render UI Service • Two-Service Architecture</small>
+        <small>Golf Availability Monitor • Streamlit Interface</small>
     </div>
     """, unsafe_allow_html=True)
     
     # Sidebar
     ui.show_connection_status()
     ui.show_profile_management()
+    
+    # Move service info to bottom of sidebar
+    st.sidebar.markdown("---")
+    ui.show_service_info()
     
     # Main content
     if not ui.api_available:
@@ -391,37 +389,139 @@ def main():
         # Time Preferences
         st.markdown("### ⏰ Time Preferences")
         
-        time_preference = st.radio(
-            "Time Selection Method",
-            ["Preset Ranges", "Custom Time Slots"]
+        # Day type selection
+        day_type_preference = st.radio(
+            "Preference Type",
+            ["Same for all days", "Different for weekdays/weekends"],
+            help="Choose whether you want the same preferences for all days or different ones for weekdays vs weekends"
         )
         
-        time_slots = []
+        if day_type_preference == "Same for all days":
+            day_types_to_configure = ["all_days"]
+        else:
+            day_types_to_configure = ["weekdays", "weekends"]
         
-        if time_preference == "Preset Ranges":
-            preset_ranges = st.multiselect(
-                "Select Time Ranges",
-                ["Morning (06:00-12:00)", "Afternoon (12:00-17:00)", "Evening (17:00-20:00)"]
+        time_slots = []
+        all_preferences = {}
+        
+        # Configure preferences for each day type
+        for day_type in day_types_to_configure:
+            if len(day_types_to_configure) > 1:
+                day_label = "Weekdays (Mon-Fri)" if day_type == "weekdays" else "Weekends (Sat-Sun)"
+                st.markdown(f"#### {day_label}")
+            
+            # Initialize session state keys for this day type
+            time_intervals_key = f'time_intervals_{day_type}'
+            if time_intervals_key not in st.session_state:
+                existing_prefs = preferences.get('time_preferences', {}).get(day_type, {})
+                st.session_state[time_intervals_key] = existing_prefs.get('time_intervals', [])
+            
+            time_preference = st.radio(
+                "Time Selection Method",
+                ["Preset Ranges", "Custom Time Intervals"],
+                key=f"time_pref_{day_type}"
             )
             
-            # Convert preset ranges to time slots
-            for preset in preset_ranges:
-                if "Morning" in preset:
-                    time_slots.extend([f"{h:02d}:00" for h in range(6, 12)])
-                    time_slots.extend([f"{h:02d}:30" for h in range(6, 12)])
-                elif "Afternoon" in preset:
-                    time_slots.extend([f"{h:02d}:00" for h in range(12, 17)])
-                    time_slots.extend([f"{h:02d}:30" for h in range(12, 17)])
-                elif "Evening" in preset:
-                    time_slots.extend([f"{h:02d}:00" for h in range(17, 21)])
-                    time_slots.extend([f"{h:02d}:30" for h in range(17, 20)])
-        else:
-            available_slots = ui.generate_time_slots()
-            time_slots = st.multiselect(
-                "Select Specific Time Slots",
-                available_slots,
-                default=preferences.get('time_slots', [])
-            )
+            day_time_slots = []
+            
+            if time_preference == "Preset Ranges":
+                preset_ranges = st.multiselect(
+                    "Select Time Ranges",
+                    ["Morning (06:00-12:00)", "Afternoon (12:00-17:00)", "Evening (17:00-20:00)"],
+                    key=f"preset_{day_type}"
+                )
+                
+                # Convert preset ranges to time slots
+                for preset in preset_ranges:
+                    if "Morning" in preset:
+                        day_time_slots.extend([f"{h:02d}:00" for h in range(6, 12)])
+                        day_time_slots.extend([f"{h:02d}:30" for h in range(6, 12)])
+                    elif "Afternoon" in preset:
+                        day_time_slots.extend([f"{h:02d}:00" for h in range(12, 17)])
+                        day_time_slots.extend([f"{h:02d}:30" for h in range(12, 17)])
+                    elif "Evening" in preset:
+                        day_time_slots.extend([f"{h:02d}:00" for h in range(17, 21)])
+                        day_time_slots.extend([f"{h:02d}:30" for h in range(17, 20)])
+            else:
+                st.markdown("**Define Custom Time Intervals**")
+                
+                # Add new interval section
+                st.markdown("**Add Time Interval:**")
+                col_start, col_end, col_add = st.columns([2, 2, 1])
+                
+                with col_start:
+                    start_time = st.time_input(
+                        "Start Time",
+                        value=datetime.strptime("07:00", "%H:%M").time(),
+                        key=f"start_time_{day_type}"
+                    )
+                
+                with col_end:
+                    end_time = st.time_input(
+                        "End Time",
+                        value=datetime.strptime("11:00", "%H:%M").time(),
+                        key=f"end_time_{day_type}"
+                    )
+                
+                with col_add:
+                    st.markdown("<br>", unsafe_allow_html=True)  # Add spacing
+                    if st.button("Add Interval", key=f"add_interval_{day_type}"):
+                        interval = f"{start_time.strftime('%H:%M')}-{end_time.strftime('%H:%M')}"
+                        if interval not in st.session_state[time_intervals_key]:
+                            st.session_state[time_intervals_key].append(interval)
+                            st.rerun()
+                
+                # Display current intervals
+                if st.session_state[time_intervals_key]:
+                    st.markdown("**Current Time Intervals:**")
+                    intervals_to_remove = []
+                    
+                    for i, interval in enumerate(st.session_state[time_intervals_key]):
+                        col_interval, col_remove = st.columns([3, 1])
+                        with col_interval:
+                            st.markdown(f"• {interval}")
+                        with col_remove:
+                            if st.button("Remove", key=f"remove_{day_type}_{i}"):
+                                intervals_to_remove.append(interval)
+                    
+                    # Remove intervals that were marked for removal
+                    for interval in intervals_to_remove:
+                        st.session_state[time_intervals_key].remove(interval)
+                        st.rerun()
+                    
+                    # Convert intervals to time slots for compatibility
+                    for interval in st.session_state[time_intervals_key]:
+                        start_str, end_str = interval.split('-')
+                        start_hour = int(start_str.split(':')[0])
+                        start_min = int(start_str.split(':')[1])
+                        end_hour = int(end_str.split(':')[0])
+                        end_min = int(end_str.split(':')[1])
+                        
+                        # Generate 30-minute slots within the interval
+                        current_hour = start_hour
+                        current_min = start_min
+                        
+                        while (current_hour < end_hour) or (current_hour == end_hour and current_min < end_min):
+                            day_time_slots.append(f"{current_hour:02d}:{current_min:02d}")
+                            current_min += 30
+                            if current_min >= 60:
+                                current_min = 0
+                                current_hour += 1
+                else:
+                    st.info(f"Add time intervals for {day_type.replace('_', ' ')}.")
+            
+            # Store the preferences for this day type
+            all_preferences[day_type] = {
+                'time_slots': day_time_slots,
+                'time_intervals': st.session_state[time_intervals_key] if time_preference == "Custom Time Intervals" else [],
+                'method': time_preference
+            }
+            
+            # Add all time slots to the main list for validation
+            time_slots.extend(day_time_slots)
+            
+            if len(day_types_to_configure) > 1:
+                st.markdown("---")
         
         st.markdown("---")
         
@@ -445,47 +545,49 @@ def main():
             )
         
         with col_settings2:
-            notification_frequency = st.selectbox(
-                "Notification Frequency",
-                ["immediate", "hourly", "daily"],
-                index=["immediate", "hourly", "daily"].index(
-                    preferences.get('notification_frequency', 'immediate')
-                )
-            )
+            # Removed notification frequency - not used anymore
+            st.markdown("**Additional Settings**")
+            st.info("Notifications are sent immediately when availability is found.")
         
         st.markdown("---")
         
         # Save section
         st.markdown("### 💾 Save Configuration")
         
-        is_valid = bool(name and email and selected_courses and time_slots)
+        # Validate preferences
+        validation_issues = []
+        if not name:
+            validation_issues.append("Enter your name")
+        if not email:
+            validation_issues.append("Enter your email")
+        if not selected_courses:
+            validation_issues.append("Select at least one course")
+        
+        # Validate time preferences using utility function
+        time_validation_errors = validate_time_preferences({
+            'time_preferences': all_preferences,
+            'preference_type': day_type_preference
+        })
+        validation_issues.extend(time_validation_errors)
+        
+        is_valid = len(validation_issues) == 0
         
         if not is_valid:
-            validation_issues = []
-            if not name:
-                validation_issues.append("Enter your name")
-            if not email:
-                validation_issues.append("Enter your email")
-            if not selected_courses:
-                validation_issues.append("Select at least one course")
-            if not time_slots:
-                validation_issues.append("Select time slots")
-            
             st.info(f"📝 Complete: {', '.join(validation_issues)}")
         
         col_save1, col_save2 = st.columns(2)
         
         with col_save1:
             if st.button("💾 Save Profile", disabled=not is_valid, use_container_width=True):
-                # Prepare preferences
+                # Prepare preferences with proper structure
                 new_preferences = {
                     'name': name,
                     'email': email,
                     'selected_courses': selected_courses,
-                    'time_slots': time_slots,
+                    'time_preferences': all_preferences,
+                    'preference_type': day_type_preference,
                     'min_players': min_players,
-                    'days_ahead': days_ahead,
-                    'notification_frequency': notification_frequency
+                    'days_ahead': days_ahead
                 }
                 
                 # Save via API
@@ -532,21 +634,22 @@ def main():
         
         if is_valid:
             st.markdown(f"**Monitoring:** {days_ahead} days ahead")
-            st.markdown(f"**Frequency:** {notification_frequency}")
             st.markdown(f"**Min Players:** {min_players}")
+            
+            # Show time preferences summary
+            if all_preferences:
+                st.markdown(f"**Time Preferences:** {day_type_preference}")
+                total_intervals = 0
+                for day_type, prefs in all_preferences.items():
+                    if prefs['time_intervals']:
+                        total_intervals += len(prefs['time_intervals'])
+                        day_label = day_type.replace('_', ' ').title()
+                        st.markdown(f"• {day_label}: {len(prefs['time_intervals'])} intervals")
+                
+                if total_intervals == 0 and time_slots:
+                    st.markdown(f"• Using preset ranges: {len(set(time_slots))} time slots")
         
-        # Service info
-        st.markdown("---")
-        st.markdown("### 🔧 Service Info")
-        
-        if ui.api_available:
-            st.success("🟢 Two-Service Architecture")
-            st.markdown("**UI Service:** Running")
-            st.markdown("**API Service:** Connected")
-        
-        if ui.system_status:
-            version = ui.system_status.get("version", "unknown")
-            st.markdown(f"**Version:** {version}")
+
 
 if __name__ == "__main__":
     main()
