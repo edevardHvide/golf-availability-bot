@@ -390,6 +390,94 @@ async def send_test_notification(request: TestNotificationRequest):
         logger.error(f"Error sending test notification: {e}")
         raise HTTPException(status_code=500, detail=f"Error sending notification: {str(e)}")
 
+@app.get("/api/cached-availability")
+async def get_cached_availability(user_email: str = None, hours_limit: int = 24):
+    """Get cached availability results for offline access."""
+    try:
+        if DATABASE_TYPE == "postgresql":
+            db_manager = get_db_manager()
+            cached_result = db_manager.get_latest_cached_availability(user_email, hours_limit)
+            
+            if cached_result:
+                return {
+                    "success": True,
+                    "cached": True,
+                    "check_timestamp": cached_result["check_timestamp"].isoformat(),
+                    "check_type": cached_result["check_type"],
+                    "availability": cached_result["availability_data"],
+                    "courses_checked": cached_result["courses_checked"],
+                    "total_courses": cached_result["total_courses"],
+                    "total_availability_slots": cached_result["total_availability_slots"],
+                    "new_availability": cached_result["metadata"].get("new_availability", []),
+                    "date_range": {
+                        "start": cached_result["date_range_start"].isoformat(),
+                        "end": cached_result["date_range_end"].isoformat()
+                    },
+                    "cache_age_hours": hours_limit,
+                    "message": f"Showing cached results from {cached_result['check_timestamp'].strftime('%Y-%m-%d %H:%M:%S')}"
+                }
+            else:
+                return {
+                    "success": False,
+                    "cached": False,
+                    "message": f"No cached results available within the last {hours_limit} hours"
+                }
+        else:
+            return {
+                "success": False,
+                "cached": False,
+                "message": "Cached availability requires PostgreSQL database"
+            }
+    except Exception as e:
+        logger.error(f"Error getting cached availability: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.get("/api/cached-availability/history")
+async def get_cached_availability_history(user_email: str = None, limit: int = 10):
+    """Get cached availability history."""
+    try:
+        if DATABASE_TYPE == "postgresql":
+            db_manager = get_db_manager()
+            history = db_manager.get_cached_availability_history(user_email, limit)
+            
+            formatted_history = []
+            for result in history:
+                formatted_history.append({
+                    "id": result["id"],
+                    "check_timestamp": result["check_timestamp"].isoformat(),
+                    "check_type": result["check_type"],
+                    "user_email": result["user_email"],
+                    "total_courses": result["total_courses"],
+                    "total_availability_slots": result["total_availability_slots"],
+                    "new_availability_count": result["new_availability_count"],
+                    "success": result["success"],
+                    "check_duration_seconds": float(result["check_duration_seconds"]) if result["check_duration_seconds"] else None,
+                    "date_range": {
+                        "start": result["date_range_start"].isoformat(),
+                        "end": result["date_range_end"].isoformat()
+                    }
+                })
+            
+            return {
+                "success": True,
+                "history": formatted_history,
+                "count": len(formatted_history)
+            }
+        else:
+            return {
+                "success": False,
+                "message": "Cached availability history requires PostgreSQL database"
+            }
+    except Exception as e:
+        logger.error(f"Error getting cached availability history: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
 @app.get("/api/database/health")
 async def database_health():
     """Database-specific health check."""
