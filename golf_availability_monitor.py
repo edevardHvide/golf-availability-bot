@@ -16,6 +16,7 @@ import os
 import re
 import json
 import requests
+import time
 from typing import Dict, List
 from pathlib import Path
 from dotenv import load_dotenv
@@ -441,6 +442,224 @@ def send_personalized_notifications(user_preferences: List[Dict], all_availabili
         else:
             console.print(f"📭 No new availability for {user_name} based on their preferences", style="dim")
 
+def is_scheduled_time() -> bool:
+    """Check if current time is one of the scheduled notification times (9am, 12pm, 9pm)"""
+    now = datetime.datetime.now()
+    scheduled_hours = [9, 12, 21]  # 9am, 12pm, 9pm
+    return now.hour in scheduled_hours and now.minute < 5  # 5-minute window
+
+def wait_for_next_scheduled_time():
+    """Wait until the next scheduled notification time"""
+    now = datetime.datetime.now()
+    scheduled_hours = [9, 12, 21]  # 9am, 12pm, 9pm
+    
+    # Find next scheduled time
+    next_hour = None
+    for hour in scheduled_hours:
+        if now.hour < hour:
+            next_hour = hour
+            break
+    
+    if next_hour is None:
+        # Next scheduled time is tomorrow at 9am
+        next_time = now.replace(hour=9, minute=0, second=0, microsecond=0) + datetime.timedelta(days=1)
+    else:
+        next_time = now.replace(hour=next_hour, minute=0, second=0, microsecond=0)
+    
+    wait_seconds = (next_time - now).total_seconds()
+    console.print(f"⏰ Next scheduled check: {next_time.strftime('%Y-%m-%d %H:%M:%S')}", style="cyan")
+    console.print(f"⏰ Waiting {wait_seconds/3600:.1f} hours...", style="dim")
+    
+    return wait_seconds
+
+async def run_scheduled_monitoring(args, time_window, window_str):
+    """Run monitoring in scheduled mode - only at 9am, 12pm, and 9pm"""
+    
+    # Load user preferences
+    user_preferences = get_user_preferences() if not args.local else []
+    
+    if user_preferences:
+        console.print(f"👥 Scheduled monitoring for {len(user_preferences)} users", style="blue")
+    else:
+        console.print("👥 No user preferences found - using legacy mode", style="yellow")
+    
+    # Track previous state for detecting new availability
+    previous_state: Dict[str, Dict[str, int]] = {}
+    
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(headless=True)
+        context = await browser.new_context()
+        
+        try:
+            # Attempt automatic login
+            console.print("🔐 Authenticating with golfbox.golf...", style="cyan")
+            login_success = await automatic_login(pw, context)
+            if not login_success:
+                console.print("Authentication failed. Exiting.", style="red")
+                return
+            
+            console.print("Authentication successful! Starting scheduled monitoring...", style="green")
+            
+            while True:
+                # Check if it's a scheduled time
+                if is_scheduled_time():
+                    console.print(f"\n⏰ SCHEDULED CHECK - {datetime.datetime.now().strftime('%H:%M:%S')}", style="bold green")
+                    
+                    # Perform the availability check
+                    await perform_availability_check(args, time_window, window_str, user_preferences, previous_state, context)
+                    
+                    # Wait a bit to avoid duplicate runs in the same 5-minute window
+                    await asyncio.sleep(300)  # 5 minutes
+                else:
+                    # Wait until next scheduled time
+                    wait_seconds = wait_for_next_scheduled_time()
+                    await asyncio.sleep(min(wait_seconds, 300))  # Check every 5 minutes or until next scheduled time
+                    
+        except KeyboardInterrupt:
+            console.print("\n\n👋 Scheduled monitoring stopped. Happy golfing!", style="bold blue")
+        finally:
+            await browser.close()
+
+async def run_immediate_check(args, time_window, window_str):
+    """Run a single immediate check and exit"""
+    
+    # Load user preferences
+    user_preferences = get_user_preferences() if not args.local else []
+    
+    console.print(f"⚡ Running immediate check for {len(user_preferences)} users", style="cyan")
+    
+    # Track previous state (empty for immediate check)
+    previous_state: Dict[str, Dict[str, int]] = {}
+    
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(headless=True)
+        context = await browser.new_context()
+        
+        try:
+            # Attempt automatic login
+            console.print("🔐 Authenticating with golfbox.golf...", style="cyan")
+            login_success = await automatic_login(pw, context)
+            if not login_success:
+                console.print("Authentication failed. Exiting.", style="red")
+                return {"success": False, "error": "Authentication failed"}
+            
+            console.print("Authentication successful! Running immediate check...", style="green")
+            
+            # Perform the availability check
+            results = await perform_availability_check(args, time_window, window_str, user_preferences, previous_state, context)
+            
+            console.print("✅ Immediate check completed!", style="green")
+            return results
+            
+        except Exception as e:
+            console.print(f"❌ Immediate check failed: {e}", style="red")
+            return {"success": False, "error": str(e)}
+        finally:
+            await browser.close()
+
+async def perform_availability_check(args, time_window, window_str, user_preferences, previous_state, context):
+    """Perform the actual availability check - extracted for reuse"""
+    
+    # Determine which clubs to monitor
+    if user_preferences:
+        # Build comprehensive club list from all users
+        all_user_courses = set()
+        for user in user_preferences:
+            all_user_courses.update(user.get('selected_courses', []))
+        
+        club_keys = list(all_user_courses)
+        console.print(f"📋 Monitoring all courses from user preferences: {len(club_keys)} courses", style="cyan")
+    else:
+        # Fallback to original logic
+        selected_clubs_env = os.getenv("SELECTED_CLUBS", "").strip()
+        if selected_clubs_env:
+            club_keys = [key.strip() for key in re.split(r"[,;\n\r\t]+", selected_clubs_env) if key.strip()]
+        else:
+            club_keys = golf_url_manager.get_default_club_configuration()
+        console.print(f"📋 Using default/environment configuration: {len(club_keys)} courses", style="cyan")
+    
+    # Get URLs and labels from golf_club_urls.py
+    today = datetime.date.today()
+    urls = [golf_url_manager.get_club_by_name(key).get_url_for_date(today) for key in club_keys if golf_url_manager.get_club_by_name(key)]
+    labels = [golf_url_manager.get_club_by_name(key).display_name for key in club_keys if golf_url_manager.get_club_by_name(key)]
+    
+    # Check current day + next (days-1) days
+    dates_to_check = [today + datetime.timedelta(days=i) for i in range(args.days)]
+    
+    console.print(f"Checking availability for {len(dates_to_check)} days: {dates_to_check[0]} to {dates_to_check[-1]}")
+    
+    current_state = {}
+    new_availability = []
+    
+    # Check each date
+    for target_date in dates_to_check:
+        date_str = target_date.strftime('%Y-%m-%d')
+        day_name = "Today" if target_date == today else target_date.strftime('%A')
+        console.print(f"\n📅 {day_name} ({date_str})")
+        
+        # Check each course for this date
+        for i, (base_url, label) in enumerate(zip(urls, labels)):
+            # Use the existing URL rewriting logic that handles SelectedDate properly
+            url = rewrite_url_for_day(base_url, target_date)
+            console.print(f"  DEBUG: Course {i+1} - {label}, Date: {date_str}", style="dim")
+            
+            available_times = await check_course_availability(context, url, label, target_date, time_window, args.players)
+            
+            # Store state with date key
+            state_key = f"{label}_{date_str}"
+            current_state[state_key] = available_times
+            
+            # Check for new availability
+            previous_times = previous_state.get(state_key, {})
+            for time_str, capacity in available_times.items():
+                if time_str not in previous_times or capacity > previous_times[time_str]:
+                    new_availability.append(f"{label} on {date_str} at {time_str}: {capacity} spots")
+    
+    # Send personalized notifications to users or fallback to generic email
+    if user_preferences:
+        # Send personalized notifications to each user
+        console.print("\n📧 Sending personalized notifications...", style="bold cyan")
+        send_personalized_notifications(user_preferences, current_state, dates_to_check, previous_state)
+    else:
+        # Fallback to original generic email notification
+        if new_availability:
+            console.print("\n🚨 New availability detected!", style="bold green")
+            for item in new_availability:
+                console.print(f"  • {item}", style="green")
+            
+            # Send generic email notification
+            alert_date = dates_to_check[0].strftime('%Y-%m-%d')
+            subject = f"⛳ Golf Availability Alert - {alert_date}"
+            
+            # Prepare configuration info for email
+            config_info = {
+                'courses': len(urls),
+                'time_window': window_str,
+                'interval': args.interval,
+                'min_players': args.players,
+                'days': args.days
+            }
+            
+            send_email_notification(
+                subject=subject, 
+                new_availability=new_availability,
+                all_availability=current_state,
+                time_window=window_str,
+                config_info=config_info,
+                club_order=labels
+            )
+            console.print("Generic email notification sent!", style="green")
+    
+    # Return results for API use
+    return {
+        "success": True,
+        "timestamp": datetime.datetime.now().isoformat(),
+        "availability": current_state,
+        "new_availability": new_availability,
+        "total_courses": len(labels),
+        "total_dates": len(dates_to_check)
+    }
+
 async def main():
     """Main monitoring loop."""
     # Parse command line arguments
@@ -449,6 +668,10 @@ async def main():
                        help="Time window to monitor (default: 16:00-18:00)")
     parser.add_argument("--interval", type=int, default=300, 
                        help="Check interval in seconds (default: 300 = 5 minutes)")
+    parser.add_argument("--scheduled", action="store_true",
+                       help="Run in scheduled mode - only check at 9am, 12pm, and 9pm")
+    parser.add_argument("--immediate", action="store_true",
+                       help="Run immediate check once and exit")
     parser.add_argument("--players", type=int, default=3, 
                        help="Minimum number of available slots required (default: 3)")
     parser.add_argument("--days", type=int, default=2,
@@ -467,6 +690,16 @@ async def main():
 
     console.print("🏌️ Golf Availability Monitor - Personalized Edition", style="bold blue")
     console.print("=" * 60)
+    
+    # Handle scheduled mode
+    if args.scheduled:
+        console.print("⏰ Running in SCHEDULED MODE - notifications at 9am, 12pm, and 9pm", style="bold cyan")
+        return await run_scheduled_monitoring(args, time_window, window_str)
+    
+    # Handle immediate mode
+    if args.immediate:
+        console.print("⚡ Running IMMEDIATE CHECK - single check and exit", style="bold yellow")
+        return await run_immediate_check(args, time_window, window_str)
     
     # Check if running in local mode
     if args.local:

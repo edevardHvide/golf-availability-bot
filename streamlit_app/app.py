@@ -9,6 +9,7 @@ with robust API integration and error handling.
 import streamlit as st
 import requests
 import json
+import time
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List
@@ -690,6 +691,35 @@ def main():
                 st.session_state.user_preferences = {}
                 st.session_state.current_user_email = None
                 st.rerun()
+        
+        # Immediate availability check section
+        if name and email and selected_courses and time_slots:
+            st.markdown("---")
+            st.markdown("### ⚡ Immediate Availability Check")
+            st.info("💻 **Note:** This feature requires your local computer to be running the golf monitor.")
+            
+            col_immediate1, col_immediate2 = st.columns(2)
+            
+            with col_immediate1:
+                if st.button("⚡ Check Now", use_container_width=True, type="primary"):
+                    # Trigger immediate check
+                    with st.spinner("Checking availability... This may take 1-2 minutes."):
+                        result = trigger_immediate_availability_check(email, new_preferences if 'new_preferences' in locals() else preferences)
+                    
+                    if result.get('success'):
+                        st.success("✅ Immediate check started! Results will appear below.")
+                        # Auto-refresh to show results
+                        time.sleep(2)
+                        st.rerun()
+                    else:
+                        st.error(f"❌ Failed to start check: {result.get('error', 'Unknown error')}")
+            
+            with col_immediate2:
+                if st.button("🔄 Refresh Results", use_container_width=True):
+                    st.rerun()
+            
+            # Show immediate check results
+            show_immediate_check_results(email)
     
     with col2:
         # Summary panel
@@ -732,8 +762,130 @@ def main():
                 
                 if total_intervals == 0 and time_slots:
                     st.markdown(f"• Using preset ranges: {len(set(time_slots))} time slots")
-        
 
+def trigger_immediate_availability_check(user_email: str, preferences: Dict) -> Dict:
+    """Trigger an immediate availability check via local API server"""
+    LOCAL_API_URL = "http://localhost:5000"
+    
+    try:
+        # First check if local server is running
+        health_response = requests.get(f"{LOCAL_API_URL}/health", timeout=3)
+        if health_response.status_code != 200:
+            return {"success": False, "error": "Local golf monitor is not running"}
+        
+        # Trigger immediate check
+        payload = {
+            "user_email": user_email,
+            "time_window": "06:00-21:00",  # Wide window for immediate checks
+            "days": preferences.get('days_ahead', 4),
+            "players": preferences.get('min_players', 1)
+        }
+        
+        response = requests.post(f"{LOCAL_API_URL}/api/immediate-check", json=payload, timeout=5)
+        
+        if response.status_code == 200:
+            return response.json()
+        elif response.status_code == 429:
+            return {"success": False, "error": "Check already in progress. Please wait."}
+        else:
+            return {"success": False, "error": f"Server error: {response.status_code}"}
+            
+    except requests.exceptions.ConnectionError:
+        return {
+            "success": False, 
+            "error": "Cannot connect to local golf monitor. Make sure it's running with: python local_api_server.py"
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+def show_immediate_check_results(user_email: str):
+    """Show results from the most recent immediate check"""
+    LOCAL_API_URL = "http://localhost:5000"
+    
+    try:
+        # Get check status
+        status_response = requests.get(f"{LOCAL_API_URL}/api/check-status", timeout=3)
+        if status_response.status_code != 200:
+            return
+        
+        status_data = status_response.json()
+        
+        if status_data.get('check_in_progress'):
+            st.info("⏳ Check in progress... Please wait 1-2 minutes and refresh.")
+            return
+        
+        # Get last result
+        result_response = requests.get(f"{LOCAL_API_URL}/api/check-result", timeout=3)
+        if result_response.status_code != 200:
+            st.info("📋 No recent check results available.")
+            return
+        
+        result_data = result_response.json()
+        
+        # Check if result is for current user
+        if result_data.get('user_email') != user_email:
+            st.info("📋 No recent check results for your profile.")
+            return
+        
+        # Display results
+        st.markdown("#### 📈 Latest Availability Check Results")
+        
+        result_time = result_data.get('timestamp', '')
+        if result_time:
+            try:
+                dt = datetime.fromisoformat(result_time.replace('Z', '+00:00'))
+                time_str = dt.strftime('%Y-%m-%d %H:%M:%S')
+                st.caption(f"Last checked: {time_str}")
+            except:
+                st.caption(f"Last checked: {result_time}")
+        
+        if result_data.get('success'):
+            results = result_data.get('results', {})
+            availability = results.get('availability', {})
+            new_availability = results.get('new_availability', [])
+            
+            if availability:
+                # Show availability by date
+                dates_found = set()
+                for key in availability.keys():
+                    if '_' in key:
+                        date_part = key.split('_')[-1]
+                        dates_found.add(date_part)
+                
+                for date_str in sorted(dates_found):
+                    st.markdown(f"**{date_str}:**")
+                    
+                    date_availability = {k: v for k, v in availability.items() if k.endswith(f"_{date_str}")}
+                    
+                    if any(date_availability.values()):
+                        for state_key, times in date_availability.items():
+                            if times:
+                                course_name = state_key.replace(f"_{date_str}", "")
+                                times_str = ", ".join([f"{t}({c})" for t, c in sorted(times.items())])
+                                st.success(f"✅ {course_name}: {times_str}")
+                    else:
+                        st.info("🚫 No availability found for this date")
+                
+                # Show new availability if any
+                if new_availability:
+                    st.markdown("**🎆 New Availability (since last check):**")
+                    for item in new_availability:
+                        st.success(f"✨ {item}")
+            else:
+                st.info("🚫 No availability found matching your preferences.")
+        else:
+            error_msg = result_data.get('error', 'Unknown error')
+            st.error(f"❌ Check failed: {error_msg}")
+            
+            # Show raw output if available for debugging
+            if result_data.get('raw_output'):
+                with st.expander("🔍 Debug Information"):
+                    st.text(result_data['raw_output'])
+    
+    except requests.exceptions.ConnectionError:
+        st.warning("⚠️ Cannot connect to local golf monitor. Make sure it's running.")
+    except Exception as e:
+        st.error(f"❌ Error getting results: {e}")
 
 if __name__ == "__main__":
     main()
