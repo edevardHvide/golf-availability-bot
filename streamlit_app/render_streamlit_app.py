@@ -520,7 +520,7 @@ def main():
                 key=f"time_pref_{day_type}"
         )
         
-            day_time_slots = []
+        day_time_slots = []
         
         if time_preference == "Preset Ranges":
             preset_ranges = st.multiselect(
@@ -541,72 +541,72 @@ def main():
                         day_time_slots.extend([f"{h:02d}:00" for h in range(17, 21)])
                         day_time_slots.extend([f"{h:02d}:30" for h in range(17, 20)])
         else:
-                st.markdown("**Define Custom Time Intervals**")
-                
-                # Add new interval section
-                st.markdown("**Add Time Interval:**")
-                col_start, col_end, col_add = st.columns([2, 2, 1])
-                
-                with col_start:
-                    start_time = st.time_input(
-                        "Start Time",
-                        value=datetime.strptime("07:00", "%H:%M").time(),
-                        key=f"start_time_{day_type}"
-                    )
-                
-                with col_end:
-                    end_time = st.time_input(
-                        "End Time",
-                        value=datetime.strptime("11:00", "%H:%M").time(),
-                        key=f"end_time_{day_type}"
-                    )
-                
-                with col_add:
-                    st.markdown("<br>", unsafe_allow_html=True)  # Add spacing
-                    if st.button("Add Interval", key=f"add_interval_{day_type}"):
-                        interval = f"{start_time.strftime('%H:%M')}-{end_time.strftime('%H:%M')}"
-                        if interval not in st.session_state[time_intervals_key]:
-                            st.session_state[time_intervals_key].append(interval)
-                            st.rerun()
-                
-                # Display current intervals
-                if st.session_state[time_intervals_key]:
-                    st.markdown("**Current Time Intervals:**")
-                    intervals_to_remove = []
-                    
-                    for i, interval in enumerate(st.session_state[time_intervals_key]):
-                        col_interval, col_remove = st.columns([3, 1])
-                        with col_interval:
-                            st.markdown(f"• {interval}")
-                        with col_remove:
-                            if st.button("Remove", key=f"remove_{day_type}_{i}"):
-                                intervals_to_remove.append(interval)
-                    
-                    # Remove intervals that were marked for removal
-                    for interval in intervals_to_remove:
-                        st.session_state[time_intervals_key].remove(interval)
+            st.markdown("**Define Custom Time Intervals**")
+            
+            # Add new interval section
+            st.markdown("**Add Time Interval:**")
+            col_start, col_end, col_add = st.columns([2, 2, 1])
+            
+            with col_start:
+                start_time = st.time_input(
+                    "Start Time",
+                    value=datetime.strptime("07:00", "%H:%M").time(),
+                    key=f"start_time_{day_type}"
+                )
+            
+            with col_end:
+                end_time = st.time_input(
+                    "End Time",
+                    value=datetime.strptime("11:00", "%H:%M").time(),
+                    key=f"end_time_{day_type}"
+                )
+            
+            with col_add:
+                st.markdown("<br>", unsafe_allow_html=True)  # Add spacing
+                if st.button("Add Interval", key=f"add_interval_{day_type}"):
+                    interval = f"{start_time.strftime('%H:%M')}-{end_time.strftime('%H:%M')}"
+                    if interval not in st.session_state[time_intervals_key]:
+                        st.session_state[time_intervals_key].append(interval)
                         st.rerun()
+            
+            # Display current intervals
+            if st.session_state[time_intervals_key]:
+                st.markdown("**Current Time Intervals:**")
+                intervals_to_remove = []
+                
+                for i, interval in enumerate(st.session_state[time_intervals_key]):
+                    col_interval, col_remove = st.columns([3, 1])
+                    with col_interval:
+                        st.markdown(f"• {interval}")
+                    with col_remove:
+                        if st.button("Remove", key=f"remove_{day_type}_{i}"):
+                            intervals_to_remove.append(interval)
+                
+                # Remove intervals that were marked for removal
+                for interval in intervals_to_remove:
+                    st.session_state[time_intervals_key].remove(interval)
+                    st.rerun()
+                
+                # Convert intervals to time slots for compatibility
+                for interval in st.session_state[time_intervals_key]:
+                    start_str, end_str = interval.split('-')
+                    start_hour = int(start_str.split(':')[0])
+                    start_min = int(start_str.split(':')[1])
+                    end_hour = int(end_str.split(':')[0])
+                    end_min = int(end_str.split(':')[1])
                     
-                    # Convert intervals to time slots for compatibility
-                    for interval in st.session_state[time_intervals_key]:
-                        start_str, end_str = interval.split('-')
-                        start_hour = int(start_str.split(':')[0])
-                        start_min = int(start_str.split(':')[1])
-                        end_hour = int(end_str.split(':')[0])
-                        end_min = int(end_str.split(':')[1])
-                        
-                        # Generate 30-minute slots within the interval
-                        current_hour = start_hour
-                        current_min = start_min
-                        
-                        while (current_hour < end_hour) or (current_hour == end_hour and current_min < end_min):
-                            day_time_slots.append(f"{current_hour:02d}:{current_min:02d}")
-                            current_min += 30
-                            if current_min >= 60:
-                                current_min = 0
-                                current_hour += 1
-                else:
-                    st.info(f"Add time intervals for {day_type.replace('_', ' ')}.")
+                    # Generate 30-minute slots within the interval
+                    current_hour = start_hour
+                    current_min = start_min
+                    
+                    while (current_hour < end_hour) or (current_hour == end_hour and current_min < end_min):
+                        day_time_slots.append(f"{current_hour:02d}:{current_min:02d}")
+                        current_min += 30
+                        if current_min >= 60:
+                            current_min = 0
+                            current_hour += 1
+            else:
+                st.info(f"Add time intervals for {day_type.replace('_', ' ')}.")
             
             # Store the preferences for this day type
             all_preferences[day_type] = {
@@ -653,13 +653,13 @@ def main():
         st.markdown("### 💾 Save Configuration")
         
         # Validate preferences
-            validation_issues = []
-            if not name:
-                validation_issues.append("Enter your name")
-            if not email:
-                validation_issues.append("Enter your email")
-            if not selected_courses:
-                validation_issues.append("Select at least one course")
+        validation_issues = []
+        if not name:
+            validation_issues.append("Enter your name")
+        if not email:
+            validation_issues.append("Enter your email")
+        if not selected_courses:
+            validation_issues.append("Select at least one course")
         
         # Validate time preferences using utility function
         time_validation_errors = validate_time_preferences({
@@ -989,7 +989,7 @@ def show_smart_availability_results(user_email: str, user_preferences: Dict, sel
         
         # Summary
         if total_matches > 0:
-        st.markdown("---")
+            st.markdown("---")
             st.success(f"🎯 **Found {total_matches} available time slots** matching your preferences!")
             
             # Show filtering summary
