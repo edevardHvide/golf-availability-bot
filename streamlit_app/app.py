@@ -206,7 +206,7 @@ class GolfMonitorApp:
                 '<div class="status-indicator status-warning">🟡 API Offline (Local Mode)</div>',
                 unsafe_allow_html=True
             )
-        else:
+    else:
             st.sidebar.markdown(
                 '<div class="status-indicator status-error">🔴 System Issues</div>',
                 unsafe_allow_html=True
@@ -256,7 +256,7 @@ class GolfMonitorApp:
                     data = json.load(f)
                 
                 if isinstance(data, dict) and "users" in data:
-                    return data["users"].get(email, {})
+                        return data["users"].get(email, {})
         except Exception as e:
             logger.error(f"Fallback load failed: {e}")
         
@@ -298,19 +298,19 @@ class GolfMonitorApp:
             
             # Save with metadata
             existing_data["_metadata"] = {
-                "last_updated": datetime.now().isoformat(),
-                "version": "2.0",
-                "source": "streamlit_fallback"
+                    "last_updated": datetime.now().isoformat(),
+                    "version": "2.0",
+                    "source": "streamlit_fallback"
             }
             
             FALLBACK_PREFERENCES_FILE.parent.mkdir(parents=True, exist_ok=True)
             with open(FALLBACK_PREFERENCES_FILE, 'w') as f:
                 json.dump(existing_data, f, indent=2)
-            
-            return True
-        except Exception as e:
+        
+        return True
+    except Exception as e:
             logger.error(f"Fallback save failed: {e}")
-            return False
+        return False
 
     def get_available_courses(self) -> List[Dict]:
         """Get list of available golf courses - using static data for efficiency."""
@@ -345,8 +345,8 @@ class GolfMonitorApp:
                 
                 if "users" in data:
                     return list(data["users"].keys())
-        except Exception:
-            pass
+    except Exception:
+        pass
     
         return []
     
@@ -363,10 +363,10 @@ class GolfMonitorApp:
                     result = response.json()
                     if result.get("type") == "demo_mode":
                         st.info("📧 Demo Mode: Test notification simulated successfully")
-                    else:
+            else:
                         st.success("📧 Test notification sent successfully!")
                     return True
-                else:
+        else:
                     st.error(f"Failed to send test notification: {response.text}")
         except Exception as e:
             st.error(f"Error sending test notification: {e}")
@@ -408,8 +408,8 @@ class GolfMonitorApp:
                 st.session_state.user_preferences = preferences
                 st.session_state.current_user_email = email_to_load
                 st.success(f"✅ Loaded profile for {preferences.get('name', email_to_load)}")
-                st.rerun()
-            else:
+                        st.rerun()
+                    else:
                 st.warning(f"❌ No profile found for {email_to_load}")
         
         # Show current loaded profile
@@ -424,9 +424,9 @@ class GolfMonitorApp:
             """, unsafe_allow_html=True)
             
             if st.sidebar.button("🗑️ Clear Profile"):
-                st.session_state.user_preferences = {}
+        st.session_state.user_preferences = {}
                 st.session_state.current_user_email = None
-                st.rerun()
+        st.rerun()
     
 def main():
     """Main Streamlit application."""
@@ -442,9 +442,9 @@ def main():
     col_header_text, col_header_image = st.columns([2, 1])
     
     with col_header_text:
-        st.markdown("""
-        <div class="main-header">
-            <h1>🏌️ Golf Availability Monitor</h1>
+    st.markdown("""
+    <div class="main-header">
+        <h1>🏌️ Golf Availability Monitor</h1>
             <p>Smart tee time notifications with instant availability checking</p>
         </div>
         """, unsafe_allow_html=True)
@@ -496,8 +496,8 @@ def main():
         <div class="intro-step">
             <h4 style="color: #4CAF50; text-align: center; margin-bottom: 0.5rem;">3️⃣ Smart Check</h4>
             <p style="text-align: center; font-size: 0.9rem;">Click "📊 Check Now" for instant results from cached data</p>
-        </div>
-        """, unsafe_allow_html=True)
+            </div>
+            """, unsafe_allow_html=True)
     
     # Sidebar status and profile management
     app.show_status_indicator()
@@ -590,28 +590,28 @@ def main():
             )
             
             day_time_slots = []
-            
-            if time_preference == "Preset Ranges":
-                preset_ranges = st.multiselect(
-                    "Select Time Ranges",
-                    ["Morning (07:00-11:00)", "Afternoon (11:00-15:00)", "Evening (15:00-19:00)"],
+        
+        if time_preference == "Preset Ranges":
+            preset_ranges = st.multiselect(
+                "Select Time Ranges",
+                ["Morning (07:00-11:00)", "Afternoon (11:00-15:00)", "Evening (15:00-19:00)"],
                     key=f"preset_{day_type}",
-                    help="Select your preferred time ranges"
-                )
-                
-                # Convert preset ranges to time slots
-                for preset in preset_ranges:
-                    if "Morning" in preset:
+                help="Select your preferred time ranges"
+            )
+            
+            # Convert preset ranges to time slots
+            for preset in preset_ranges:
+                if "Morning" in preset:
                         day_time_slots.extend([f"{h:02d}:00" for h in range(7, 11)])
                         day_time_slots.extend([f"{h:02d}:30" for h in range(7, 11)])
-                    elif "Afternoon" in preset:
+                elif "Afternoon" in preset:
                         day_time_slots.extend([f"{h:02d}:00" for h in range(11, 15)])
                         day_time_slots.extend([f"{h:02d}:30" for h in range(11, 15)])
-                    elif "Evening" in preset:
+                elif "Evening" in preset:
                         day_time_slots.extend([f"{h:02d}:00" for h in range(15, 19)])
                         day_time_slots.extend([f"{h:02d}:30" for h in range(15, 19)])
-            
-            else:
+        
+        else:
                 st.markdown("**Define Custom Time Intervals**")
                 
                 # Add new interval section
@@ -726,13 +726,13 @@ def main():
         st.markdown("### 💾 Save Configuration")
         
         # Validate preferences
-        validation_issues = []
-        if not name:
-            validation_issues.append("Enter your name")
-        if not email:
-            validation_issues.append("Enter your email")
-        if not selected_courses:
-            validation_issues.append("Select at least one golf course")
+            validation_issues = []
+            if not name:
+                validation_issues.append("Enter your name")
+            if not email:
+                validation_issues.append("Enter your email")
+            if not selected_courses:
+                validation_issues.append("Select at least one golf course")
         
         # Validate time preferences using utility function
         time_validation_errors = validate_time_preferences({
@@ -749,23 +749,23 @@ def main():
         col_save1, col_save2, col_save3 = st.columns(3)
         
         with col_save1:
-            if st.button("💾 Save Profile", disabled=not is_valid, use_container_width=True):
-                # Check if this is an existing user
+        if st.button("💾 Save Profile", disabled=not is_valid, use_container_width=True):
+            # Check if this is an existing user
                 existing_prefs = app.load_preferences_from_api(email)
                 is_existing_user = bool(existing_prefs)
                 
                 # Create preferences object with proper structure
-                new_preferences = {
-                    'name': name,
-                    'email': email,
-                    'selected_courses': selected_courses,
+            new_preferences = {
+                'name': name,
+                'email': email,
+                'selected_courses': selected_courses,
                     'time_preferences': all_preferences,
                     'preference_type': day_type_preference,
-                    'min_players': min_players,
-                    'days_ahead': days_ahead,
-                    'timestamp': datetime.now().isoformat()
-                }
-                
+                'min_players': min_players,
+                'days_ahead': days_ahead,
+                'timestamp': datetime.now().isoformat()
+            }
+            
                 # Save preferences
                 success = app.save_preferences_to_api(new_preferences)
                 
@@ -782,7 +782,7 @@ def main():
                     st.error("❌ Failed to save profile. Please try again.")
         
         with col_save2:
-            if st.button("🧪 Test Notification", disabled=not (name and email), use_container_width=True):
+        if st.button("🧪 Test Notification", disabled=not (name and email), use_container_width=True):
                 app.send_test_notification(email, name)
         
         with col_save3:
@@ -975,7 +975,7 @@ def show_smart_availability_results(user_email: str, user_preferences: Dict, sel
                         date_display = f"Tomorrow ({day_name}, {date_str})"
                     elif days_diff == -1:
                         date_display = f"Yesterday ({day_name}, {date_str})"
-                    else:
+            else:
                         date_display = f"{day_name}, {date_str}"
                         
                 except:
@@ -1023,7 +1023,7 @@ def show_smart_availability_results(user_email: str, user_preferences: Dict, sel
                 
                 st.write(f"**Minimum Players:** {user_preferences.get('min_players', 1)}")
                 st.write(f"**Days Ahead:** {user_preferences.get('days_ahead', 4)}")
-        else:
+            else:
             st.info("🚫 No availability found matching your specific preferences.")
             st.markdown("**Your filters:**")
             st.write(f"• **Courses:** {', '.join([c.replace('_', ' ').title() for c in selected_courses])}")
