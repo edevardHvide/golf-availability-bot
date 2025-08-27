@@ -16,6 +16,7 @@ import os
 import re
 import json
 import requests
+import sys
 import time
 from typing import Dict, List
 from pathlib import Path
@@ -634,22 +635,23 @@ async def perform_availability_check(args, time_window, window_str, user_prefere
     start_time = datetime.datetime.now()
     
     # Determine which clubs to monitor
-    if user_preferences:
-        # Build comprehensive club list from all users
-        all_user_courses = set()
-        for user in user_preferences:
-            all_user_courses.update(user.get('selected_courses', []))
-        
-        club_keys = list(all_user_courses)
-        console.print(f"📋 Monitoring all courses from user preferences: {len(club_keys)} courses", style="cyan")
+    # Always monitor ALL clubs when not in local mode, then filter notifications by user preferences
+    selected_clubs_env = os.getenv("SELECTED_CLUBS", "").strip()
+    if selected_clubs_env:
+        # Environment variable override (for testing specific clubs)
+        club_keys = [key.strip() for key in re.split(r"[,;\n\r\t]+", selected_clubs_env) if key.strip()]
+        console.print(f"📋 Using environment SELECTED_CLUBS override: {len(club_keys)} courses", style="yellow")
     else:
-        # Fallback to original logic
-        selected_clubs_env = os.getenv("SELECTED_CLUBS", "").strip()
-        if selected_clubs_env:
-            club_keys = [key.strip() for key in re.split(r"[,;\n\r\t]+", selected_clubs_env) if key.strip()]
-        else:
-            club_keys = golf_url_manager.get_default_club_configuration()
-        console.print(f"📋 Using default/environment configuration: {len(club_keys)} courses", style="cyan")
+        # Monitor ALL available clubs - user preferences will filter notifications
+        club_keys = golf_url_manager.get_default_club_configuration()
+        console.print(f"📋 Monitoring ALL available courses: {len(club_keys)} courses", style="cyan")
+        
+        if user_preferences:
+            # Show what courses users are interested in (for info only)
+            all_user_courses = set()
+            for user in user_preferences:
+                all_user_courses.update(user.get('selected_courses', []))
+            console.print(f"💡 Users are interested in {len(all_user_courses)} specific courses (notifications will be filtered)", style="dim")
     
     # Get URLs and labels from golf_club_urls.py
     today = datetime.date.today()
@@ -807,30 +809,41 @@ async def main():
         console.print("💡 Create user profiles at your Streamlit app to enable personalized monitoring", style="dim")
     
     # Determine which clubs to monitor
-    if user_preferences:
-        # Build comprehensive club list from all users
-        all_user_courses = set()
-        for user in user_preferences:
-            all_user_courses.update(user.get('selected_courses', []))
-        
-        club_keys = list(all_user_courses)
-        console.print(f"📋 Monitoring all courses from user preferences: {len(club_keys)} courses", style="cyan")
+    # Always monitor ALL clubs when not in local mode, then filter notifications by user preferences
+    selected_clubs_env = os.getenv("SELECTED_CLUBS", "").strip()
+    if selected_clubs_env:
+        # Environment variable override (for testing specific clubs)
+        club_keys = [key.strip() for key in re.split(r"[,;\n\r\t]+", selected_clubs_env) if key.strip()]
+        console.print(f"📋 Using environment SELECTED_CLUBS override: {len(club_keys)} courses", style="yellow")
     else:
-        # Fallback to original logic
-        selected_clubs_env = os.getenv("SELECTED_CLUBS", "").strip()
-        if selected_clubs_env:
-            club_keys = [key.strip() for key in re.split(r"[,;\n\r\t]+", selected_clubs_env) if key.strip()]
-        else:
-            club_keys = golf_url_manager.get_default_club_configuration()
-        console.print(f"📋 Using default/environment configuration: {len(club_keys)} courses", style="cyan")
+        # Monitor ALL available clubs - user preferences will filter notifications
+        club_keys = golf_url_manager.get_default_club_configuration()
+        console.print(f"📋 Monitoring ALL available courses: {len(club_keys)} courses", style="cyan")
+        
+        if user_preferences:
+            # Show what courses users are interested in (for info only)
+            all_user_courses = set()
+            for user in user_preferences:
+                all_user_courses.update(user.get('selected_courses', []))
+            console.print(f"💡 Users are interested in {len(all_user_courses)} specific courses (notifications will be filtered)", style="dim")
     
     # Get URLs and labels from golf_club_urls.py
     today = datetime.date.today()
     urls = [golf_url_manager.get_club_by_name(key).get_url_for_date(today) for key in club_keys if golf_url_manager.get_club_by_name(key)]
     labels = [golf_url_manager.get_club_by_name(key).display_name for key in club_keys if golf_url_manager.get_club_by_name(key)]
     
-    console.print(f"Debug - Using club keys: {club_keys}", style="dim")
+    console.print(f"Debug - Using club keys: {club_keys[:10]}{'...' if len(club_keys) > 10 else ''}", style="dim")
     console.print(f"Debug - Final labels count: {len(labels)}, URLs count: {len(urls)}", style="dim")
+    
+    # Debug: Check for clubs that couldn't be resolved
+    missing_clubs = []
+    for key in club_keys:
+        club = golf_url_manager.get_club_by_name(key)
+        if not club:
+            missing_clubs.append(key)
+    
+    if missing_clubs:
+        console.print(f"⚠️ Warning: {len(missing_clubs)} clubs couldn't be resolved: {missing_clubs[:5]}", style="yellow")
     
     console.print(f"Monitoring {len(club_keys)} courses total", style="blue")
     console.print(f"Time window: {window_str}", style="blue")
@@ -966,6 +979,22 @@ async def main():
                             club_order=labels
                         )
                         console.print("Generic email notification sent!", style="green")
+                
+                # Save results to database for offline access
+                end_time = datetime.datetime.now()
+                duration = (end_time - datetime.datetime.now().replace(minute=0, second=0, microsecond=0)).total_seconds()
+                
+                results = {
+                    "success": True,
+                    "timestamp": end_time.isoformat(),
+                    "availability": current_state,
+                    "new_availability": new_availability,
+                    "total_courses": len(labels),
+                    "total_dates": len(dates_to_check),
+                    "duration_seconds": duration
+                }
+                
+                await save_results_to_database(results, check_type="scheduled")
                 
                 # Update previous state
                 previous_state = current_state.copy()

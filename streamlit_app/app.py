@@ -590,28 +590,28 @@ def main():
             )
             
             day_time_slots = []
-        
-        if time_preference == "Preset Ranges":
-            preset_ranges = st.multiselect(
-                "Select Time Ranges",
-                ["Morning (07:00-11:00)", "Afternoon (11:00-15:00)", "Evening (15:00-19:00)"],
-                    key=f"preset_{day_type}",
-                help="Select your preferred time ranges"
-            )
             
-            # Convert preset ranges to time slots
-            for preset in preset_ranges:
-                if "Morning" in preset:
+            if time_preference == "Preset Ranges":
+                preset_ranges = st.multiselect(
+                    "Select Time Ranges",
+                    ["Morning (07:00-11:00)", "Afternoon (11:00-15:00)", "Evening (15:00-19:00)"],
+                    key=f"preset_{day_type}",
+                    help="Select your preferred time ranges"
+                )
+                
+                # Convert preset ranges to time slots
+                for preset in preset_ranges:
+                    if "Morning" in preset:
                         day_time_slots.extend([f"{h:02d}:00" for h in range(7, 11)])
                         day_time_slots.extend([f"{h:02d}:30" for h in range(7, 11)])
-                elif "Afternoon" in preset:
+                    elif "Afternoon" in preset:
                         day_time_slots.extend([f"{h:02d}:00" for h in range(11, 15)])
                         day_time_slots.extend([f"{h:02d}:30" for h in range(11, 15)])
-                elif "Evening" in preset:
+                    elif "Evening" in preset:
                         day_time_slots.extend([f"{h:02d}:00" for h in range(15, 19)])
                         day_time_slots.extend([f"{h:02d}:30" for h in range(15, 19)])
-        
-        else:
+            
+            else:
                 st.markdown("**Define Custom Time Intervals**")
                 
                 # Add new interval section
@@ -906,8 +906,15 @@ def show_smart_availability_results(user_email: str, user_preferences: Dict, sel
         
         data = response.json()
         
-        if not data.get("success") or not data.get("cached"):
-            st.info("💾 No recent cached results available. Data will be available after your local computer runs a check.")
+        if not data.get("cached"):
+            st.info(data.get("message", "💾 No recent cached results available. Data will be available after your local computer runs a check."))
+            
+            # Show instructions if available
+            instructions = data.get("instructions", [])
+            if instructions:
+                with st.expander("💡 How to get cached data"):
+                    for instruction in instructions:
+                        st.write(instruction)
             return
         
         # Display header with cache info

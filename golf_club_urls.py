@@ -375,6 +375,7 @@ class GolfClubURLManager:
         
         # Calculate distances and sort clubs - include ALL clubs in the system
         clubs_with_distance = []
+        clubs_without_location = []
         
         for club_key, club in self.clubs.items():
             if club and club.location:
@@ -383,10 +384,16 @@ class GolfClubURLManager:
                 lng_diff = abs(club.location[1] - oslo_center[1])
                 distance = (lat_diff ** 2 + lng_diff ** 2) ** 0.5
                 clubs_with_distance.append((distance, club_key))
+            elif club:
+                # Include clubs without location coordinates at the end
+                clubs_without_location.append(club_key)
         
-        # Sort by distance and return club keys
+        # Sort by distance and return club keys (with location first, then without location)
         clubs_with_distance.sort(key=lambda x: x[0])
-        return [club_key for _, club_key in clubs_with_distance]
+        sorted_clubs = [club_key for _, club_key in clubs_with_distance]
+        sorted_clubs.extend(clubs_without_location)
+        
+        return sorted_clubs
     
     def get_default_urls_and_labels(self, target_date: date = None) -> Tuple[str, str]:
         """Get default configuration URLs and labels as comma-separated strings."""

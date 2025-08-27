@@ -65,7 +65,7 @@ class UserPreferences(BaseModel):
     name: str
     email: EmailStr
     selected_courses: List[str]
-    time_preferences: Dict[str, TimePreferences] = {}
+    time_preferences: Dict[str, Dict] = {}  # More flexible to accept any dict structure
     preference_type: str = "Same for all days"
     min_players: int = 1
     days_ahead: int = 4
@@ -125,7 +125,8 @@ async def root():
             "preferences": "/api/preferences",
             "courses": "/api/courses",
             "test_notification": "/api/test-notification",
-            "backup": "/api/backup"
+            "backup": "/api/backup",
+            "cached_availability": "/api/cached-availability"
         }
     }
 
@@ -389,6 +390,33 @@ async def list_backups():
     except Exception as e:
         logger.error(f"Error listing backups: {e}")
         raise HTTPException(status_code=500, detail="Failed to list backups")
+
+@app.get("/api/cached-availability")
+async def get_cached_availability(user_email: str = None, hours_limit: int = 24):
+    """Get cached availability results for offline access."""
+    try:
+        # For JSON-based storage, we don't have a dedicated cache system
+        # Return a helpful message about how caching works
+        return {
+            "success": True,
+            "cached": False,
+            "message": "💾 No recent cached results available. Data will be available after your local computer runs a check.",
+            "note": "The cached availability feature requires your local golf monitor to be running and checking for availability. This API service stores user preferences but doesn't perform golf course checks itself.",
+            "availability": {},
+            "instructions": [
+                "1. Run your local golf monitor with: python golf_availability_monitor.py",
+                "2. Or use the scheduled monitoring to get automatic updates",
+                "3. Results will be cached and available here after each check"
+            ]
+        }
+    except Exception as e:
+        logger.error(f"Error getting cached availability: {e}")
+        return {
+            "success": False,
+            "cached": False,
+            "error": str(e),
+            "message": "Error retrieving cached availability data"
+        }
 
 if __name__ == "__main__":
     # Development server
