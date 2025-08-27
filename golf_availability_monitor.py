@@ -1,3 +1,4 @@
+l
 #!/usr/bin/env python3
 """Golf Availability Monitor - Main monitoring script for multiple courses.
 
@@ -445,13 +446,8 @@ async def main():
     console.print("🏌️ Golf Availability Monitor - Personalized Edition", style="bold blue")
     console.print("=" * 60)
     
-    # Check if running in local mode
-    if args.local:
-        console.print("🏠 Running in LOCAL MODE - skipping API/UI, using CLI arguments only", style="bold yellow")
-        user_preferences = []
-    else:
-        # Load user preferences from cloud API first
-        user_preferences = get_user_preferences()
+    # Load user preferences from cloud API first
+    user_preferences = get_user_preferences()
     if user_preferences:
         console.print(f"👥 Running personalized monitoring for {len(user_preferences)} users:", style="blue")
         for user in user_preferences:
