@@ -358,31 +358,44 @@ def main():
     # Quick introduction section
     st.markdown("""
     <div class="intro-section">
-        <h3 style="color: #667eea; margin-bottom: 1rem;">🚀 Quick Start Guide</h3>
-        <p style="margin-bottom: 1rem;">Get personalized golf availability notifications in 3 easy steps:</p>
-        
-        <div class="intro-steps">
-            <div class="intro-step">
-                <h4>1️⃣ Profile Setup</h4>
-                <p>Enter your name, email, and select your favorite golf courses</p>
-            </div>
-            <div class="intro-step">
-                <h4>2️⃣ Time Preferences</h4>
-                <p>Set different time intervals for weekdays vs weekends</p>
-            </div>
-            <div class="intro-step">
-                <h4>3️⃣ Smart Check</h4>
-                <p>Click "📊 Check Now" for instant results from cached data</p>
-            </div>
-        </div>
-        
-        <div style="margin-top: 1rem; padding: 1rem; background: rgba(255,255,255,0.7); border-radius: 8px;">
-            <strong>💡 How it works:</strong> Your local computer collects availability data hourly, 
-            while this web app shows you instant results filtered for your preferences - 
-            even when your computer is offline!
-        </div>
+        <h3 style="color: #4CAF50; margin-bottom: 1rem; font-weight: 600;">🚀 Quick Start Guide</h3>
+        <p style="margin-bottom: 1rem; font-size: 1.1rem;">Get personalized golf availability notifications in 3 easy steps:</p>
     </div>
     """, unsafe_allow_html=True)
+    
+    # Use Streamlit columns instead of CSS grid for better compatibility
+    col_step1, col_step2, col_step3 = st.columns(3)
+    
+    with col_step1:
+        st.markdown("""
+        <div class="intro-step">
+            <h4 style="color: #4CAF50; text-align: center; margin-bottom: 0.5rem;">1️⃣ Profile Setup</h4>
+            <p style="text-align: center; font-size: 0.9rem;">Enter your name, email, and select your favorite golf courses</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col_step2:
+        st.markdown("""
+        <div class="intro-step">
+            <h4 style="color: #4CAF50; text-align: center; margin-bottom: 0.5rem;">2️⃣ Time Preferences</h4>
+            <p style="text-align: center; font-size: 0.9rem;">Set different time intervals for weekdays vs weekends</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col_step3:
+        st.markdown("""
+        <div class="intro-step">
+            <h4 style="color: #4CAF50; text-align: center; margin-bottom: 0.5rem;">3️⃣ Smart Check</h4>
+            <p style="text-align: center; font-size: 0.9rem;">Click "📊 Check Now" for instant results from cached data</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # How it works explanation
+    st.info("""
+    💡 **How it works:** Your local computer collects availability data hourly, 
+    while this web app shows you instant results filtered for your preferences - 
+    even when your computer is offline!
+    """)
     
     # Sidebar
     ui.show_connection_status()

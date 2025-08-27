@@ -100,7 +100,7 @@ st.markdown("""
         border-top: 3px solid #667eea;
     }
     .intro-step h4 {
-        color: #667eea;
+        color: #4CAF50;
         margin-bottom: 0.5rem;
     }
     .course-card {
