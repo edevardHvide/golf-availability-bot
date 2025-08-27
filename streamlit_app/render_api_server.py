@@ -10,7 +10,7 @@ import sys
 import logging
 from pathlib import Path
 from datetime import datetime
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -87,10 +87,11 @@ class UserPreferences(BaseModel):
     name: str
     email: EmailStr
     selected_courses: List[str]
-    time_preferences: Dict[str, TimePreferences] = {}
+    time_preferences: Dict[str, Dict] = {}  # More flexible to accept any dict structure
     preference_type: str = "Same for all days"
     min_players: int = 1
     days_ahead: int = 4
+    timestamp: Optional[str] = None
 
 class PreferencesResponse(BaseModel):
     success: bool

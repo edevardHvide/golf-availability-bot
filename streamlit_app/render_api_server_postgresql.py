@@ -10,7 +10,7 @@ import sys
 import logging
 from pathlib import Path
 from datetime import datetime
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -51,9 +51,13 @@ class UserPreferences(BaseModel):
     name: str
     email: EmailStr
     selected_courses: List[str]
-    time_slots: List[str]
+    time_preferences: Dict[str, Dict] = {}  # New flexible weekday/weekend format
+    preference_type: str = "Same for all days"
     min_players: int = 1
     days_ahead: int = 7
+    timestamp: Optional[str] = None
+    # Legacy fields for backward compatibility
+    time_slots: List[str] = []  # Optional for backward compatibility
     notification_frequency: str = "immediate"
 
 class SystemStatus(BaseModel):
