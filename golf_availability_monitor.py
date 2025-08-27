@@ -422,14 +422,14 @@ async def main():
     """Main monitoring loop."""
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="Golf Availability Monitor")
-    parser.add_argument("--time-window", default="08:00-17:00", 
-                       help="Time window to monitor (default: 08:00-17:00)")
+    parser.add_argument("--time-window", default="16:00-18:00", 
+                       help="Time window to monitor (default: 16:00-18:00)")
     parser.add_argument("--interval", type=int, default=300, 
                        help="Check interval in seconds (default: 300 = 5 minutes)")
-    parser.add_argument("--players", type=int, default=1, 
-                       help="Minimum number of available slots required (default: 1)")
-    parser.add_argument("--days", type=int, default=4,
-                       help="Number of days to check from today (default: 4)")
+    parser.add_argument("--players", type=int, default=3, 
+                       help="Minimum number of available slots required (default: 3)")
+    parser.add_argument("--days", type=int, default=2,
+                       help="Number of days to check from today (default: 2)")
     parser.add_argument("--local", action="store_true", 
                        help="Run in local mode - skip API/UI, use only CLI arguments and environment variables")
     args = parser.parse_args()
@@ -445,8 +445,14 @@ async def main():
     console.print("🏌️ Golf Availability Monitor - Personalized Edition", style="bold blue")
     console.print("=" * 60)
     
-    # Load user preferences from cloud API first
-    user_preferences = get_user_preferences()
+    # Check if running in local mode
+    if args.local:
+        console.print("🏠 Running in LOCAL MODE - skipping API/UI, using CLI arguments only", style="bold yellow")
+        user_preferences = []
+    else:
+        # Load user preferences from cloud API first
+        user_preferences = get_user_preferences()
+    
     if user_preferences:
         console.print(f"👥 Running personalized monitoring for {len(user_preferences)} users:", style="blue")
         for user in user_preferences:
