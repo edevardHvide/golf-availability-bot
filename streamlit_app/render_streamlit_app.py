@@ -38,12 +38,69 @@ st.set_page_config(
 st.markdown("""
 <style>
     .main-header {
-        background: linear-gradient(90deg, #4CAF50 0%, #45a049 100%);
-        padding: 2rem;
-        border-radius: 10px;
+        background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+        padding: 2.5rem;
+        border-radius: 15px;
         color: white;
         text-align: center;
         margin-bottom: 2rem;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        position: relative;
+        overflow: hidden;
+    }
+    .main-header::before {
+        content: '';
+        position: absolute;
+        top: -50%;
+        left: -50%;
+        width: 200%;
+        height: 200%;
+        background: linear-gradient(45deg, rgba(255,255,255,0.1) 0%, transparent 50%, rgba(255,255,255,0.1) 100%);
+        animation: shimmer 3s infinite;
+    }
+    @keyframes shimmer {
+        0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
+        100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
+    }
+    .main-header h1 {
+        font-size: 2.5rem;
+        margin-bottom: 0.5rem;
+        font-weight: 700;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        position: relative;
+        z-index: 1;
+    }
+    .main-header p {
+        font-size: 1.2rem;
+        margin-bottom: 0;
+        opacity: 0.9;
+        position: relative;
+        z-index: 1;
+    }
+    .intro-section {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        padding: 1.5rem;
+        border-radius: 12px;
+        margin-bottom: 2rem;
+        border-left: 5px solid #667eea;
+    }
+    .intro-steps {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin-top: 1rem;
+    }
+    .intro-step {
+        background: white;
+        padding: 1rem;
+        border-radius: 8px;
+        text-align: center;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        border-top: 3px solid #667eea;
+    }
+    .intro-step h4 {
+        color: #667eea;
+        margin-bottom: 0.5rem;
     }
 
     .status-healthy { background: #d4edda; color: #155724; padding: 0.5rem; border-radius: 5px; }
@@ -290,12 +347,40 @@ def main():
     if 'user_preferences' not in st.session_state:
         st.session_state.user_preferences = {}
     
-    # Header
+    # Enhanced Header
     st.markdown("""
     <div class="main-header">
         <h1>🏌️ Golf Availability Monitor</h1>
-        <p>Configure your personalized golf tee time notifications</p>
-        <small>Golf Availability Monitor • Streamlit Interface</small>
+        <p>Smart tee time notifications with instant availability checking</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Quick introduction section
+    st.markdown("""
+    <div class="intro-section">
+        <h3 style="color: #667eea; margin-bottom: 1rem;">🚀 Quick Start Guide</h3>
+        <p style="margin-bottom: 1rem;">Get personalized golf availability notifications in 3 easy steps:</p>
+        
+        <div class="intro-steps">
+            <div class="intro-step">
+                <h4>1️⃣ Profile Setup</h4>
+                <p>Enter your name, email, and select your favorite golf courses</p>
+            </div>
+            <div class="intro-step">
+                <h4>2️⃣ Time Preferences</h4>
+                <p>Set different time intervals for weekdays vs weekends</p>
+            </div>
+            <div class="intro-step">
+                <h4>3️⃣ Smart Check</h4>
+                <p>Click "📊 Check Now" for instant results from cached data</p>
+            </div>
+        </div>
+        
+        <div style="margin-top: 1rem; padding: 1rem; background: rgba(255,255,255,0.7); border-radius: 8px;">
+            <strong>💡 How it works:</strong> Your local computer collects availability data hourly, 
+            while this web app shows you instant results filtered for your preferences - 
+            even when your computer is offline!
+        </div>
     </div>
     """, unsafe_allow_html=True)
     
@@ -415,26 +500,26 @@ def main():
             )
             
             day_time_slots = []
-            
-            if time_preference == "Preset Ranges":
-                preset_ranges = st.multiselect(
-                    "Select Time Ranges",
+        
+        if time_preference == "Preset Ranges":
+            preset_ranges = st.multiselect(
+                "Select Time Ranges",
                     ["Morning (06:00-12:00)", "Afternoon (12:00-17:00)", "Evening (17:00-20:00)"],
                     key=f"preset_{day_type}"
-                )
-                
-                # Convert preset ranges to time slots
-                for preset in preset_ranges:
-                    if "Morning" in preset:
+            )
+            
+            # Convert preset ranges to time slots
+            for preset in preset_ranges:
+                if "Morning" in preset:
                         day_time_slots.extend([f"{h:02d}:00" for h in range(6, 12)])
                         day_time_slots.extend([f"{h:02d}:30" for h in range(6, 12)])
-                    elif "Afternoon" in preset:
+                elif "Afternoon" in preset:
                         day_time_slots.extend([f"{h:02d}:00" for h in range(12, 17)])
                         day_time_slots.extend([f"{h:02d}:30" for h in range(12, 17)])
-                    elif "Evening" in preset:
+                elif "Evening" in preset:
                         day_time_slots.extend([f"{h:02d}:00" for h in range(17, 21)])
                         day_time_slots.extend([f"{h:02d}:30" for h in range(17, 20)])
-            else:
+        else:
                 st.markdown("**Define Custom Time Intervals**")
                 
                 # Add new interval section
@@ -547,13 +632,13 @@ def main():
         st.markdown("### 💾 Save Configuration")
         
         # Validate preferences
-        validation_issues = []
-        if not name:
-            validation_issues.append("Enter your name")
-        if not email:
-            validation_issues.append("Enter your email")
-        if not selected_courses:
-            validation_issues.append("Select at least one course")
+            validation_issues = []
+            if not name:
+                validation_issues.append("Enter your name")
+            if not email:
+                validation_issues.append("Enter your email")
+            if not selected_courses:
+                validation_issues.append("Select at least one course")
         
         # Validate time preferences using utility function
         time_validation_errors = validate_time_preferences({
@@ -631,7 +716,7 @@ def main():
         if is_valid:
             st.markdown(f"**Monitoring:** {days_ahead} days ahead")
             st.markdown(f"**Min Players:** {min_players}")
-            
+        
             # Show time preferences summary
             if all_preferences:
                 st.markdown(f"**Time Preferences:** {day_type_preference}")

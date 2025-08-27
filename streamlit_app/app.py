@@ -39,12 +39,69 @@ st.set_page_config(
 st.markdown("""
 <style>
     .main-header {
-        background: linear-gradient(90deg, #4CAF50 0%, #45a049 100%);
-        padding: 2rem;
-        border-radius: 10px;
+        background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+        padding: 2.5rem;
+        border-radius: 15px;
         color: white;
         text-align: center;
         margin-bottom: 2rem;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        position: relative;
+        overflow: hidden;
+    }
+    .main-header::before {
+        content: '';
+        position: absolute;
+        top: -50%;
+        left: -50%;
+        width: 200%;
+        height: 200%;
+        background: linear-gradient(45deg, rgba(255,255,255,0.1) 0%, transparent 50%, rgba(255,255,255,0.1) 100%);
+        animation: shimmer 3s infinite;
+    }
+    @keyframes shimmer {
+        0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
+        100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
+    }
+    .main-header h1 {
+        font-size: 2.5rem;
+        margin-bottom: 0.5rem;
+        font-weight: 700;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        position: relative;
+        z-index: 1;
+    }
+    .main-header p {
+        font-size: 1.2rem;
+        margin-bottom: 0;
+        opacity: 0.9;
+        position: relative;
+        z-index: 1;
+    }
+    .intro-section {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        padding: 1.5rem;
+        border-radius: 12px;
+        margin-bottom: 2rem;
+        border-left: 5px solid #667eea;
+    }
+    .intro-steps {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin-top: 1rem;
+    }
+    .intro-step {
+        background: white;
+        padding: 1rem;
+        border-radius: 8px;
+        text-align: center;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        border-top: 3px solid #667eea;
+    }
+    .intro-step h4 {
+        color: #667eea;
+        margin-bottom: 0.5rem;
     }
     .course-card {
         background: #f8f9fa;
@@ -382,13 +439,55 @@ def main():
     if 'user_preferences' not in st.session_state:
         st.session_state.user_preferences = {}
     
-    # Show header
+    # Show enhanced header
     st.markdown("""
     <div class="main-header">
         <h1>🏌️ Golf Availability Monitor</h1>
-        <p>Configure your personalized golf tee time notifications</p>
-            </div>
-            """, unsafe_allow_html=True)
+        <p>Smart tee time notifications with instant availability checking</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Quick introduction section
+    st.markdown("""
+    <div class="intro-section">
+        <h3 style="color: #4CAF50; margin-bottom: 1rem; font-weight: 600;">🚀 Quick Start Guide</h3>
+        <p style="margin-bottom: 1rem; font-size: 1.1rem;">Get personalized golf availability notifications in 3 easy steps:</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Use Streamlit columns instead of CSS grid for better compatibility
+    col_step1, col_step2, col_step3 = st.columns(3)
+    
+    with col_step1:
+        st.markdown("""
+        <div class="intro-step">
+            <h4 style="color: #4CAF50; text-align: center; margin-bottom: 0.5rem;">1️⃣ Profile Setup</h4>
+            <p style="text-align: center; font-size: 0.9rem;">Enter your name, email, and select your favorite golf courses</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col_step2:
+        st.markdown("""
+        <div class="intro-step">
+            <h4 style="color: #4CAF50; text-align: center; margin-bottom: 0.5rem;">2️⃣ Time Preferences</h4>
+            <p style="text-align: center; font-size: 0.9rem;">Set different time intervals for weekdays vs weekends</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col_step3:
+        st.markdown("""
+        <div class="intro-step">
+            <h4 style="color: #4CAF50; text-align: center; margin-bottom: 0.5rem;">3️⃣ Smart Check</h4>
+            <p style="text-align: center; font-size: 0.9rem;">Click "📊 Check Now" for instant results from cached data</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # How it works explanation
+    st.info("""
+    💡 **How it works:** Your local computer collects availability data hourly, 
+    while this web app shows you instant results filtered for your preferences - 
+    even when your computer is offline!
+    """)
     
     # Sidebar status and profile management
     app.show_status_indicator()
@@ -682,34 +781,28 @@ def main():
                 st.session_state.current_user_email = None
                 st.rerun()
         
-        # Immediate availability check section
+        # Smart availability check section - shows cached data instantly
         if name and email and selected_courses and time_slots:
             st.markdown("---")
-            st.markdown("### ⚡ Immediate Availability Check")
-            st.info("💻 **Note:** This feature requires your local computer to be running the golf monitor.")
+            st.markdown("### 📊 Smart Availability Check")
+            st.info("⚡ **Instant Results:** Shows latest cached data filtered for your preferences.")
             
-            col_immediate1, col_immediate2 = st.columns(2)
+            col_check1, col_check2 = st.columns(2)
             
-            with col_immediate1:
-                if st.button("⚡ Check Now", use_container_width=True, type="primary"):
-                    # Trigger immediate check
-                    with st.spinner("Checking availability... This may take 1-2 minutes."):
-                        result = trigger_immediate_availability_check(email, new_preferences if 'new_preferences' in locals() else preferences)
-                    
-                    if result.get('success'):
-                        st.success("✅ Immediate check started! Results will appear below.")
-                        # Auto-refresh to show results
-                        time.sleep(2)
-                        st.rerun()
-                    else:
-                        st.error(f"❌ Failed to start check: {result.get('error', 'Unknown error')}")
-            
-            with col_immediate2:
-                if st.button("🔄 Refresh Results", use_container_width=True):
+            with col_check1:
+                if st.button("📊 Check Now", use_container_width=True, type="primary"):
+                    # Show filtered cached results instantly
+                    st.session_state.show_smart_results = True
                     st.rerun()
             
-            # Show immediate check results
-            show_immediate_check_results(email)
+            with col_check2:
+                if st.button("🔄 Refresh", use_container_width=True):
+                    st.rerun()
+            
+            # Show smart filtered results
+            if st.session_state.get('show_smart_results', False):
+                user_preferences = new_preferences if 'new_preferences' in locals() else preferences
+                show_smart_availability_results(email, user_preferences, selected_courses)
     
     with col2:
         # Summary panel
@@ -753,129 +846,191 @@ def main():
                 if total_intervals == 0 and time_slots:
                     st.markdown(f"• Using preset ranges: {len(set(time_slots))} time slots")
 
-def trigger_immediate_availability_check(user_email: str, preferences: Dict) -> Dict:
-    """Trigger an immediate availability check via local API server"""
-    LOCAL_API_URL = "http://localhost:5000"
-    
+def filter_availability_for_user(availability_data: Dict, user_preferences: Dict, selected_courses: List[str], target_date: str) -> Dict:
+    """Filter availability data based on user's specific preferences"""
     try:
-        # First check if local server is running
-        health_response = requests.get(f"{LOCAL_API_URL}/health", timeout=3)
-        if health_response.status_code != 200:
-            return {"success": False, "error": "Local golf monitor is not running"}
+        from datetime import date
+        from time_utils import get_time_slots_for_date
         
-        # Trigger immediate check
-        payload = {
-            "user_email": user_email,
-            "time_window": "06:00-21:00",  # Wide window for immediate checks
-            "days": preferences.get('days_ahead', 4),
-            "players": preferences.get('min_players', 1)
-        }
+        # Parse target date
+        target_date_obj = date.fromisoformat(target_date)
         
-        response = requests.post(f"{LOCAL_API_URL}/api/immediate-check", json=payload, timeout=5)
+        # Get user's time slots for this specific date (respects weekday/weekend preferences)
+        user_time_slots = get_time_slots_for_date(user_preferences, target_date_obj)
         
-        if response.status_code == 200:
-            return response.json()
-        elif response.status_code == 429:
-            return {"success": False, "error": "Check already in progress. Please wait."}
-        else:
-            return {"success": False, "error": f"Server error: {response.status_code}"}
-            
-    except requests.exceptions.ConnectionError:
-        return {
-            "success": False, 
-            "error": "Cannot connect to local golf monitor. Make sure it's running with: python local_api_server.py"
-        }
+        filtered_availability = {}
+        
+        # Filter by selected courses and time preferences
+        for state_key, times in availability_data.items():
+            if '_' in state_key:
+                course_name = state_key.split('_')[0]
+                date_part = state_key.split('_')[-1]
+                
+                # Check if this course is in user's selected courses
+                if course_name in selected_courses and date_part == target_date:
+                    # Filter times based on user preferences
+                    filtered_times = {}
+                    for time_slot, capacity in times.items():
+                        if time_slot in user_time_slots:
+                            filtered_times[time_slot] = capacity
+                    
+                    if filtered_times:
+                        filtered_availability[state_key] = filtered_times
+        
+        return filtered_availability
+    
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        logger.warning(f"Error filtering availability for user: {e}")
+        return {}
 
-def show_immediate_check_results(user_email: str):
-    """Show results from the most recent immediate check"""
-    LOCAL_API_URL = "http://localhost:5000"
-    
+def show_smart_availability_results(user_email: str, user_preferences: Dict, selected_courses: List[str]):
+    """Show cached availability results filtered for user's specific preferences"""
     try:
-        # Get check status
-        status_response = requests.get(f"{LOCAL_API_URL}/api/check-status", timeout=3)
-        if status_response.status_code != 200:
+        # Get cached availability from API
+        response = requests.get(f"{API_BASE_URL}/api/cached-availability", 
+                               params={"hours_limit": 48}, timeout=5)
+        
+        if response.status_code != 200:
+            st.error("❌ Cannot retrieve cached availability data.")
             return
         
-        status_data = status_response.json()
+        data = response.json()
         
-        if status_data.get('check_in_progress'):
-            st.info("⏳ Check in progress... Please wait 1-2 minutes and refresh.")
+        if not data.get("success") or not data.get("cached"):
+            st.info("💾 No recent cached results available. Data will be available after your local computer runs a check.")
             return
         
-        # Get last result
-        result_response = requests.get(f"{LOCAL_API_URL}/api/check-result", timeout=3)
-        if result_response.status_code != 200:
-            st.info("📋 No recent check results available.")
-            return
+        # Display header with cache info
+        st.markdown("#### 📊 Smart Availability Results")
         
-        result_data = result_response.json()
-        
-        # Check if result is for current user
-        if result_data.get('user_email') != user_email:
-            st.info("📋 No recent check results for your profile.")
-            return
-        
-        # Display results
-        st.markdown("#### 📈 Latest Availability Check Results")
-        
-        result_time = result_data.get('timestamp', '')
-        if result_time:
+        cache_time = data.get('check_timestamp', '')
+        if cache_time:
             try:
-                dt = datetime.fromisoformat(result_time.replace('Z', '+00:00'))
+                from datetime import datetime
+                dt = datetime.fromisoformat(cache_time.replace('Z', '+00:00'))
                 time_str = dt.strftime('%Y-%m-%d %H:%M:%S')
-                st.caption(f"Last checked: {time_str}")
+                hours_ago = (datetime.now() - dt).total_seconds() / 3600
+                
+                if hours_ago < 1:
+                    freshness = f"{int(hours_ago * 60)} minutes ago"
+                else:
+                    freshness = f"{hours_ago:.1f} hours ago"
+                    
+                st.caption(f"📅 Data from: {time_str} ({freshness})")
             except:
-                st.caption(f"Last checked: {result_time}")
+                st.caption(f"📅 Data from: {cache_time}")
         
-        if result_data.get('success'):
-            results = result_data.get('results', {})
-            availability = results.get('availability', {})
-            new_availability = results.get('new_availability', [])
+        # Get availability data
+        availability = data.get("availability", {})
+        
+        if not availability:
+            st.info("🚫 No availability data in cache.")
+            return
+        
+        # Get unique dates from the cached data
+        dates_found = set()
+        for key in availability.keys():
+            if '_' in key:
+                date_part = key.split('_')[-1]
+                if len(date_part) == 10:  # YYYY-MM-DD format
+                    dates_found.add(date_part)
+        
+        if not dates_found:
+            st.info("🚫 No valid dates found in cached data.")
+            return
+        
+        # Show results for each date with user filtering
+        total_matches = 0
+        
+        for date_str in sorted(dates_found):
+            # Filter availability for this user and date
+            filtered_availability = filter_availability_for_user(
+                availability, user_preferences, selected_courses, date_str
+            )
             
-            if availability:
-                # Show availability by date
-                dates_found = set()
-                for key in availability.keys():
-                    if '_' in key:
-                        date_part = key.split('_')[-1]
-                        dates_found.add(date_part)
-                
-                for date_str in sorted(dates_found):
-                    st.markdown(f"**{date_str}:**")
+            if filtered_availability:
+                # Display date header
+                try:
+                    from datetime import datetime, date
+                    date_obj = date.fromisoformat(date_str)
+                    day_name = date_obj.strftime('%A')
                     
-                    date_availability = {k: v for k, v in availability.items() if k.endswith(f"_{date_str}")}
+                    # Check if it's today, tomorrow, etc.
+                    today = date.today()
+                    days_diff = (date_obj - today).days
                     
-                    if any(date_availability.values()):
-                        for state_key, times in date_availability.items():
-                            if times:
-                                course_name = state_key.replace(f"_{date_str}", "")
-                                times_str = ", ".join([f"{t}({c})" for t, c in sorted(times.items())])
-                                st.success(f"✅ {course_name}: {times_str}")
+                    if days_diff == 0:
+                        date_display = f"Today ({day_name}, {date_str})"
+                    elif days_diff == 1:
+                        date_display = f"Tomorrow ({day_name}, {date_str})"
+                    elif days_diff == -1:
+                        date_display = f"Yesterday ({day_name}, {date_str})"
                     else:
-                        st.info("🚫 No availability found for this date")
+                        date_display = f"{day_name}, {date_str}"
+                        
+                except:
+                    date_display = date_str
                 
-                # Show new availability if any
-                if new_availability:
-                    st.markdown("**🎆 New Availability (since last check):**")
-                    for item in new_availability:
-                        st.success(f"✨ {item}")
-            else:
-                st.info("🚫 No availability found matching your preferences.")
-        else:
-            error_msg = result_data.get('error', 'Unknown error')
-            st.error(f"❌ Check failed: {error_msg}")
+                st.markdown(f"### 📅 {date_display}")
+                
+                # Group by course and display
+                course_results = {}
+                for state_key, times in filtered_availability.items():
+                    course_name = state_key.replace(f"_{date_str}", "")
+                    if course_name not in course_results:
+                        course_results[course_name] = []
+                    
+                    for time_slot, capacity in sorted(times.items()):
+                        course_results[course_name].append((time_slot, capacity))
+                        total_matches += 1
+                
+                # Display results by course
+                for course_name, time_slots in course_results.items():
+                    # Get course display name
+                    course_display = course_name.replace('_', ' ').title()
+                    
+                    times_str = ", ".join([f"{t} ({c} spots)" for t, c in time_slots])
+                    st.success(f"⛳ **{course_display}**: {times_str}")
+        
+        # Summary
+        if total_matches > 0:
+            st.markdown("---")
+            st.success(f"🎯 **Found {total_matches} available time slots** matching your preferences!")
             
-            # Show raw output if available for debugging
-            if result_data.get('raw_output'):
-                with st.expander("🔍 Debug Information"):
-                    st.text(result_data['raw_output'])
+            # Show filtering summary
+            with st.expander("🔍 Filtering Details"):
+                st.write(f"**Selected Courses:** {len(selected_courses)} courses")
+                for course in selected_courses:
+                    course_display = course.replace('_', ' ').title()
+                    st.write(f"• {course_display}")
+                
+                st.write(f"**Time Preferences:** {user_preferences.get('preference_type', 'Same for all days')}")
+                
+                # Show time preference summary
+                from time_utils import format_preferences_summary
+                time_summary = format_preferences_summary(user_preferences)
+                st.text(time_summary)
+                
+                st.write(f"**Minimum Players:** {user_preferences.get('min_players', 1)}")
+                st.write(f"**Days Ahead:** {user_preferences.get('days_ahead', 4)}")
+        else:
+            st.info("🚫 No availability found matching your specific preferences.")
+            st.markdown("**Your filters:**")
+            st.write(f"• **Courses:** {', '.join([c.replace('_', ' ').title() for c in selected_courses])}")
+            st.write(f"• **Time Preferences:** {user_preferences.get('preference_type', 'Same for all days')}")
+            st.write(f"• **Minimum Players:** {user_preferences.get('min_players', 1)}")
+            
+            with st.expander("💡 Tips to find more availability"):
+                st.write("• Try selecting more golf courses")
+                st.write("• Expand your preferred time ranges")
+                st.write("• Check if your weekday/weekend preferences are too restrictive")
+                st.write("• Reduce minimum player requirements if possible")
     
     except requests.exceptions.ConnectionError:
-        st.warning("⚠️ Cannot connect to local golf monitor. Make sure it's running.")
+        st.error("❌ Cannot connect to API to retrieve cached results.")
     except Exception as e:
-        st.error(f"❌ Error getting results: {e}")
+        st.error(f"❌ Error displaying smart results: {e}")
+        logger.error(f"Smart results error: {e}")
 
 if __name__ == "__main__":
     main()
