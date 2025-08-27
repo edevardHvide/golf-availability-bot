@@ -1,4 +1,3 @@
-l
 #!/usr/bin/env python3
 """Golf Availability Monitor - Main monitoring script for multiple courses.
 
