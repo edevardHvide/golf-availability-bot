@@ -1,34 +1,34 @@
 """
-FastAPI Backend for Golf Availability Monitor
+Enhanced FastAPI Backend for Golf Availability Monitor
 
-This provides the API endpoints for the Streamlit frontend to save user preferences
-and integrates with the monitoring system. Enhanced with robust JSON handling.
+This provides robust API endpoints with proper error handling and data persistence.
 """
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, EmailStr, ValidationError
-from typing import List, Dict, Optional
-import json
+import sys
 import os
+import logging
 from pathlib import Path
 from datetime import datetime
+from typing import List, Dict, Optional
+
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, EmailStr
 import uvicorn
-import logging
 
 # Import the robust JSON manager
-from robust_json_manager import load_user_preferences, save_user_preferences, get_preferences_stats
+from robust_json_manager import (
+    load_user_preferences, 
+    save_user_preferences, 
+    get_preferences_stats,
+    preferences_manager
+)
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Define preferences file path
-PREFERENCES_FILE = Path(__file__).parent / "user_preferences.json"
-
 # Import the golf monitoring functions
-import sys
 sys.path.append(str(Path(__file__).parent.parent))
 
 try:
@@ -42,7 +42,7 @@ except ImportError:
 
 app = FastAPI(
     title="Golf Availability Monitor API",
-    description="API for managing golf tee time monitoring preferences with robust data handling",
+    description="Enhanced API for managing golf tee time monitoring preferences with robust data handling",
     version="2.0.0"
 )
 
@@ -75,7 +75,15 @@ class TestNotificationRequest(BaseModel):
     email: EmailStr
     name: str
 
-# Data storage using robust JSON manager
+class SystemStatus(BaseModel):
+    status: str
+    timestamp: str
+    golf_system_available: bool
+    preferences_file_stats: Dict
+    user_count: int
+    backup_count: int
+
+# Enhanced data operations using robust JSON manager
 def load_preferences() -> Dict:
     """Load user preferences using robust JSON manager."""
     try:
@@ -84,77 +92,103 @@ def load_preferences() -> Dict:
         logger.error(f"Error loading preferences: {e}")
         return {}
 
-def save_preferences(preferences: Dict):
+def save_preferences(preferences: Dict) -> bool:
     """Save user preferences using robust JSON manager."""
     try:
         success = save_user_preferences(preferences)
-        if not success:
+        if success:
+            logger.info(f"Successfully saved preferences for {len(preferences)} users")
+        else:
             logger.error("Failed to save preferences with robust manager")
-            raise Exception("Save operation failed")
-        logger.info(f"Successfully saved preferences for {len(preferences)} users")
+        return success
     except Exception as e:
         logger.error(f"Error saving preferences: {e}")
-        raise
+        return False
 
+# API Routes
 @app.get("/")
 async def root():
     """Root endpoint with API information."""
     return {
-        "message": "Golf Availability Monitor API",
-        "version": "1.0.0",
+        "message": "Golf Availability Monitor API v2.0",
+        "description": "Enhanced API with robust data handling",
+        "version": "2.0.0",
+        "golf_system": "available" if GOLF_SYSTEM_AVAILABLE else "demo_mode",
         "endpoints": {
+            "health": "/health",
+            "system_status": "/api/status",
             "preferences": "/api/preferences",
             "courses": "/api/courses",
-            "test_notification": "/api/test-notification"
+            "test_notification": "/api/test-notification",
+            "backup": "/api/backup"
         }
     }
 
-@app.get("/api/status")
-async def get_status():
-    """Get system status for the UI."""
-    preferences = load_user_preferences()
+@app.get("/health")
+async def health_check():
+    """Basic health check endpoint."""
     return {
         "status": "healthy",
-        "golf_system_available": GOLF_SYSTEM_AVAILABLE,
-        "user_count": len(preferences),
-        "version": "2.0.0",
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
+        "version": "2.0.0"
     }
+
+@app.get("/api/status", response_model=SystemStatus)
+async def get_system_status():
+    """Comprehensive system status endpoint."""
+    try:
+        stats = get_preferences_stats()
+        user_prefs = load_preferences()
+        
+        return SystemStatus(
+            status="healthy",
+            timestamp=datetime.now().isoformat(),
+            golf_system_available=GOLF_SYSTEM_AVAILABLE,
+            preferences_file_stats=stats,
+            user_count=len(user_prefs),
+            backup_count=stats.get("backup_count", 0)
+        )
+    except Exception as e:
+        logger.error(f"Error getting system status: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get system status")
 
 @app.get("/api/courses")
 async def get_courses():
     """Get available golf courses."""
-    if GOLF_SYSTEM_AVAILABLE:
-        courses = []
-        for key, club in golf_url_manager.clubs.items():
-            courses.append({
-                'key': key,
-                'name': club.display_name,
-                'location': club.location,
-                'default_start_time': club.default_start_time
-            })
+    try:
+        if GOLF_SYSTEM_AVAILABLE:
+            try:
+                courses = golf_url_manager.get_all_courses()
+                return {
+                    "courses": courses,
+                    "source": "golf_system",
+                    "count": len(courses)
+                }
+            except Exception as e:
+                logger.warning(f"Golf system error, using fallback: {e}")
         
-        return {
-            "courses": sorted(courses, key=lambda x: x['name']),
-            "total": len(courses)
-        }
-    else:
-        # Demo data for testing
-        demo_courses = [
-            {'key': 'oslo_golfklubb', 'name': 'Oslo Golfklubb', 'location': [59.91, 10.75], 'default_start_time': '070000'},
-            {'key': 'miklagard_gk', 'name': 'Miklagard GK', 'location': [59.97, 11.04], 'default_start_time': '070000'},
-            {'key': 'baerum_gk', 'name': 'Bærum GK', 'location': [59.89, 10.52], 'default_start_time': '060000'},
-            {'key': 'bogstad_golfklubb', 'name': 'Bogstad Golfklubb', 'location': [59.95, 10.63], 'default_start_time': '070000'},
+        # Fallback courses for demo mode
+        fallback_courses = [
+            {"id": "oslo_golfklubb", "name": "Oslo Golfklubb", "location": "Oslo"},
+            {"id": "miklagard_gk", "name": "Miklagard Golf Club", "location": "Bærum"},
+            {"id": "bogstad_golfklubb", "name": "Bogstad Golfklubb", "location": "Oslo"},
+            {"id": "drammen_golfklubb", "name": "Drammen Golfklubb", "location": "Drammen"},
+            {"id": "holmestrand_golfklubb", "name": "Holmestrand Golfklubb", "location": "Holmestrand"},
+            {"id": "kongsberg_golfklubb", "name": "Kongsberg Golfklubb", "location": "Kongsberg"}
         ]
         
         return {
-            "courses": demo_courses,
-            "total": len(demo_courses),
-            "demo_mode": True
+            "courses": fallback_courses,
+            "source": "fallback",
+            "count": len(fallback_courses)
         }
+        
+    except Exception as e:
+        logger.error(f"Error getting courses: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve courses")
 
 @app.post("/api/preferences", response_model=PreferencesResponse)
-async def save_user_preferences(preferences: UserPreferences):
+async def save_user_preferences_endpoint(preferences: UserPreferences):
     """Save user preferences for golf monitoring."""
     try:
         # Load existing preferences
@@ -165,119 +199,188 @@ async def save_user_preferences(preferences: UserPreferences):
         if not prefs_dict.get('timestamp'):
             prefs_dict['timestamp'] = datetime.now().isoformat()
         
+        # Check if user is new or existing
+        is_new_user = preferences.email not in all_preferences
+        
         # Save preferences keyed by email
         all_preferences[preferences.email] = prefs_dict
         
-        # Save to file
-        save_preferences(all_preferences)
+        # Save to file using robust manager
+        success = save_preferences(all_preferences)
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to save preferences to storage")
+        
+        action = "created" if is_new_user else "updated"
         
         return PreferencesResponse(
             success=True,
-            message=f"Preferences saved successfully for {preferences.name}",
+            message=f"Preferences {action} successfully for {preferences.name}",
             user_count=len(all_preferences)
         )
     
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Error saving preferences: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to save preferences: {str(e)}")
 
 @app.get("/api/preferences/{email}")
 async def get_user_preferences(email: str):
     """Get preferences for a specific user."""
-    all_preferences = load_preferences()
+    try:
+        all_preferences = load_preferences()
+        
+        if email not in all_preferences:
+            raise HTTPException(status_code=404, detail="User preferences not found")
+        
+        return all_preferences[email]
     
-    if email not in all_preferences:
-        raise HTTPException(status_code=404, detail="User preferences not found")
-    
-    return all_preferences[email]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving preferences for {email}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve preferences")
 
 @app.get("/api/preferences")
 async def get_all_preferences():
     """Get all user preferences (admin endpoint)."""
-    all_preferences = load_preferences()
+    try:
+        all_preferences = load_preferences()
+        
+        last_updated = "Never"
+        if all_preferences:
+            timestamps = [p.get('timestamp', '') for p in all_preferences.values()]
+            last_updated = max(t for t in timestamps if t) or "Never"
+        
+        return {
+            "preferences": all_preferences,
+            "user_count": len(all_preferences),
+            "last_updated": last_updated,
+            "system_status": "healthy"
+        }
     
-    return {
-        "preferences": all_preferences,
-        "user_count": len(all_preferences),
-        "last_updated": max([p.get('timestamp', '') for p in all_preferences.values()] or ['Never'])
-    }
+    except Exception as e:
+        logger.error(f"Error retrieving all preferences: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve preferences")
 
 @app.post("/api/test-notification")
 async def send_test_notification(request: TestNotificationRequest):
     """Send a test notification to the user."""
-    if not GOLF_SYSTEM_AVAILABLE:
-        # In demo mode, just return success
-        return {
-            "success": True, 
-            "message": f"Test notification sent to {request.email} (Demo Mode)",
-            "demo_mode": True
-        }
-    
     try:
-        # Create test availability data
-        test_availability = [
-            f"Oslo Golfklubb on {datetime.now().strftime('%Y-%m-%d')} at 10:00: 2 spots available",
-            f"Miklagard GK on {datetime.now().strftime('%Y-%m-%d')} at 14:30: 4 spots available"
-        ]
-        
-        # Temporarily set email recipient for test
-        original_email_to = os.environ.get('EMAIL_TO', '')
-        os.environ['EMAIL_TO'] = request.email
-        
-        try:
-            # Send test notification
-            send_email_notification(
-                subject=f"🧪 Test Notification for {request.name}",
-                new_availability=test_availability,
-                time_window="Test Mode",
-                config_info={
-                    'courses': 2,
-                    'time_window': 'All Day',
-                    'min_players': 1,
-                    'notification_type': 'Test'
+        if GOLF_SYSTEM_AVAILABLE:
+            try:
+                # Try to send real email
+                send_email_notification(
+                    subject="🏌️ Golf Monitor Test Notification",
+                    message=f"Hello {request.name}! Your golf availability monitoring is working correctly.",
+                    override_email=request.email
+                )
+                return {
+                    "success": True,
+                    "message": f"Test notification sent to {request.email}",
+                    "type": "real_email"
                 }
-            )
-            
-            return {"success": True, "message": f"Test notification sent to {request.email}"}
+            except Exception as e:
+                logger.warning(f"Real email failed, using demo mode: {e}")
         
-        finally:
-            # Restore original email setting
-            if original_email_to:
-                os.environ['EMAIL_TO'] = original_email_to
-            elif 'EMAIL_TO' in os.environ:
-                del os.environ['EMAIL_TO']
-    
+        # Demo mode response
+        return {
+            "success": True,
+            "message": f"Demo: Test notification would be sent to {request.email}",
+            "type": "demo_mode",
+            "note": "Email functionality not available in demo mode"
+        }
+        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to send test notification: {str(e)}")
+        logger.error(f"Error sending test notification: {e}")
+        raise HTTPException(status_code=500, detail="Failed to send test notification")
 
 @app.delete("/api/preferences/{email}")
 async def delete_user_preferences(email: str):
     """Delete preferences for a specific user."""
-    all_preferences = load_preferences()
+    try:
+        all_preferences = load_preferences()
+        
+        if email not in all_preferences:
+            raise HTTPException(status_code=404, detail="User preferences not found")
+        
+        del all_preferences[email]
+        success = save_preferences(all_preferences)
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to save changes")
+        
+        return {
+            "success": True, 
+            "message": f"Preferences deleted for {email}",
+            "remaining_users": len(all_preferences)
+        }
     
-    if email not in all_preferences:
-        raise HTTPException(status_code=404, detail="User preferences not found")
-    
-    del all_preferences[email]
-    save_preferences(all_preferences)
-    
-    return {"success": True, "message": f"Preferences deleted for {email}"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting preferences for {email}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete preferences")
 
-@app.get("/health")
-async def health_check():
-    """Health check endpoint."""
-    return {
-        "status": "healthy",
-        "timestamp": datetime.now().isoformat(),
-        "preferences_file_exists": PREFERENCES_FILE.exists(),
-        "user_count": len(load_user_preferences())
-    }
+@app.post("/api/backup")
+async def create_backup():
+    """Create a manual backup of the preferences file."""
+    try:
+        success = preferences_manager.backup()
+        
+        if success:
+            backups = preferences_manager.get_backups()
+            return {
+                "success": True,
+                "message": "Backup created successfully",
+                "backup_count": len(backups),
+                "latest_backup": str(backups[0]) if backups else None
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to create backup")
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating backup: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create backup")
+
+@app.get("/api/backups")
+async def list_backups():
+    """List available backup files."""
+    try:
+        backups = preferences_manager.get_backups()
+        backup_info = []
+        
+        for backup in backups:
+            stat = backup.stat()
+            backup_info.append({
+                "filename": backup.name,
+                "created": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                "size": stat.st_size
+            })
+        
+        return {
+            "backups": backup_info,
+            "count": len(backup_info)
+        }
+    
+    except Exception as e:
+        logger.error(f"Error listing backups: {e}")
+        raise HTTPException(status_code=500, detail="Failed to list backups")
 
 if __name__ == "__main__":
     # Development server
+    port = int(os.environ.get("PORT", 8000))
+    
+    logger.info(f"🚀 Starting Golf Availability Monitor API v2.0 on port {port}")
+    logger.info(f"📡 Golf System: {'Available' if GOLF_SYSTEM_AVAILABLE else 'Demo Mode'}")
+    
     uvicorn.run(
         "api_server:app",
         host="0.0.0.0",
-        port=8000,
+        port=port,
         reload=True,
         log_level="info"
     )

@@ -80,30 +80,24 @@ python -m playwright install chromium
 
 ## Usage
 
-### 🆕 **Enhanced CLI Configuration (Recommended)**
+### 🆕 **Web Interface Configuration (Recommended)**
 
-The new enhanced configuration system lets you set everything in a `.env` file - no command line arguments needed!
+The easiest way to configure your preferences is through the web interface:
 
 #### **Quick Start:**
 ```powershell
 # 1. Activate your environment
 .venv\Scripts\activate.ps1
 
-# 2. Run the interactive setup
-python setup_config.py
+# 2. Start the web interface
+cd streamlit_app
+python run_local.py
 
-# 3. Start monitoring
-python golf_monitor.py
-```
+# 3. Open http://localhost:8501 in your browser
+# 4. Configure your preferences and save
 
-#### **Manual Setup:**
-```powershell
-# 1. Copy the configuration template
-copy config_template.env .env
-
-# 2. Edit .env with your preferences
-# 3. Start monitoring
-python golf_monitor.py
+# 5. Start monitoring (in a new terminal)
+python golf_availability_monitor.py
 ```
 
 ### **Configuration Examples:**
@@ -136,29 +130,19 @@ PLAYER_COUNT=4
 MIN_AVAILABLE_SLOTS=2
 ```
 
-### **Legacy Usage (Original Method)**
+### **Command Line Usage**
 
-You can still use the original command-line interface:
+You can also use the command-line interface:
 
 ```powershell
-python check_availability.py monitor --between 14-18 --days-ahead 2
-```
+# Start monitoring with user preferences from web interface
+python check_availability.py monitor
 
-Examples:
-```powershell
-# Only today, 14:00–18:00 (afternoon rounds)
-python check_availability.py monitor --days-ahead 0 --between 14-18
-
-# Specific dates
-python check_availability.py monitor --dates 2025-08-20,2025-08-21
-
-# Morning rounds only
-python check_availability.py monitor --between 7-12
-```
-
-### Test notifications
-```powershell
+# Test notifications
 python check_availability.py test-notifications
+```
+
+**Note:** The command-line version now uses the enhanced monitoring system that loads user preferences from the web interface. For the best experience, configure your preferences through the web interface first.
 
 ### Run the Playwright runner (legacy grid URLs)
 
@@ -190,17 +174,7 @@ Notes:
 
 ### Authentication (Optional)
 
-If you have a Golfbox account, you can provide credentials to access member-only tee times:
-
-```powershell
-# Using command line arguments
-python check_availability.py monitor --email your@email.com --password yourpassword
-
-# Using environment variables (recommended for security)
-set GOLFBOX_EMAIL=your@email.com
-set GOLFBOX_PASSWORD=yourpassword
-python check_availability.py monitor
-```
+If you have a Golfbox account, the system will automatically handle authentication. The monitoring system includes smart login capabilities that work with the web interface.
 
 ### Email Notifications
 
@@ -338,6 +312,12 @@ C:\Users\<you>\git\golf-availability-bot
 - Run `python check_availability.py test-notifications` to verify alerts work
 - On Windows, check if notifications are enabled in system settings
 - On macOS, grant Terminal permission to control your computer if prompted
+
+### Web Interface Issues
+- Make sure you're in the virtual environment: `.venv\Scripts\activate.ps1`
+- Start the web interface: `cd streamlit_app && python run_local.py`
+- Access at http://localhost:8501
+- API documentation available at http://localhost:8000/docs
 
 ## Contributing
 

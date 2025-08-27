@@ -5,6 +5,8 @@ import datetime
 import os
 import re
 import smtplib
+import sys
+import platform
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
@@ -461,3 +463,54 @@ def rewrite_url_for_day(u: str, day: datetime.date) -> str:
         return urlunparse((parsed.scheme or "https", parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment))
     except Exception:
         return u
+
+
+def send_desktop_notification(title: str, message: str):
+    """Send a desktop notification."""
+    try:
+        if platform.system() == "Windows":
+            # Use win10toast for Windows
+            try:
+                from win10toast import ToastNotifier
+                toaster = ToastNotifier()
+                toaster.show_toast(title, message, duration=10)
+            except ImportError:
+                print(f"Desktop notification: {title}\n{message}")
+        
+        elif platform.system() == "Darwin":  # macOS
+            # Use osascript for macOS
+            import subprocess
+            script = f'display notification "{message}" with title "{title}"'
+            subprocess.run(["osascript", "-e", script], check=True)
+        
+        else:  # Linux and others
+            # Try to use notify-send
+            try:
+                import subprocess
+                subprocess.run(["notify-send", title, message], check=True)
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                print(f"Desktop notification: {title}\n{message}")
+    
+    except Exception as e:
+        print(f"Failed to send desktop notification: {e}")
+        print(f"Notification: {title}\n{message}")
+
+
+def test_notifications():
+    """Test desktop notifications."""
+    print("🔔 Testing desktop notifications...")
+    
+    # Test basic notification
+    send_desktop_notification(
+        "Golf Availability Bot - Test",
+        "If you can see this notification, desktop alerts are working correctly!"
+    )
+    
+    # Test with golf-specific content
+    send_desktop_notification(
+        "🏌️ New Golf Availability!",
+        "Found 3 new tee times:\n• Oslo GK - 14:00 (4 players)\n• Miklagard GK - 15:30 (2 players)\n• Bogstad GK - 16:00 (4 players)"
+    )
+    
+    print("✅ Test notifications sent!")
+    print("💡 If you didn't see any notifications, check your system notification settings.")
