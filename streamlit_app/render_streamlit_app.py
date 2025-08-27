@@ -340,8 +340,6 @@ def main():
     # Initialize the UI
     ui = GolfMonitorUI()
     
-
-    
     # Initialize session state
     if 'user_preferences' not in st.session_state:
         st.session_state.user_preferences = {}
