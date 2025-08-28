@@ -391,6 +391,16 @@ async def list_backups():
         logger.error(f"Error listing backups: {e}")
         raise HTTPException(status_code=500, detail="Failed to list backups")
 
+@app.get("/api/all-times-simple")
+async def get_all_times_simple():
+    """Simple version of all times endpoint."""
+    return {
+        "success": True,
+        "cached": True,
+        "message": "Simple all times endpoint working!",
+        "test": "This should show up in the API"
+    }
+
 @app.get("/api/cached-availability")
 async def get_cached_availability(user_email: str = None, hours_limit: int = 24):
     """Get cached availability results from database."""
@@ -464,6 +474,11 @@ async def debug_test():
         "code_version": "updated_api_server"
     }
 
+@app.get("/api/test-simple")
+async def test_simple():
+    """Simple test endpoint."""
+    return {"message": "Simple test endpoint working!"}
+
 @app.get("/api/all-times")
 async def get_all_times():
     """Get all available times from the latest database entry."""
@@ -503,7 +518,7 @@ async def get_all_times():
                 for state_key, times in availability_data.items():
                     if '_' in state_key:
                         course_name = state_key.split('_')[0]
-                        date_part = state_key.split('_')[-1]
+                        date_part = state_key.split('_')[0]
                         if len(date_part) == 10:  # YYYY-MM-DD format
                             dates_found.add(date_part)
                             if times:
