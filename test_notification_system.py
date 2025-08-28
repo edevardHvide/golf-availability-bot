@@ -94,8 +94,8 @@ def test_email_service():
     try:
         from notification_service import EmailService
         
-        # Check if email credentials are configured
-        required_vars = ['EMAIL_USER', 'EMAIL_PASSWORD']
+        # Check if email credentials are configured (matching golf_utils.py)
+        required_vars = ['SMTP_USER', 'SMTP_PASS', 'EMAIL_ENABLED']
         missing_vars = [var for var in required_vars if not os.environ.get(var)]
         
         if missing_vars:

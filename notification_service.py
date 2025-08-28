@@ -43,19 +43,27 @@ class EmailService:
     """Handles email notifications using SMTP."""
     
     def __init__(self):
-        """Initialize email service with environment variables."""
-        self.smtp_server = os.environ.get('SMTP_SERVER', 'smtp.gmail.com')
+        """Initialize email service with environment variables (compatible with existing golf_utils.py)."""
+        # Use the same environment variables as golf_utils.py
+        self.smtp_server = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
         self.smtp_port = int(os.environ.get('SMTP_PORT', '587'))
-        self.email_user = os.environ.get('EMAIL_USER')
-        self.email_password = os.environ.get('EMAIL_PASSWORD')
-        self.from_email = os.environ.get('FROM_EMAIL', self.email_user)
+        self.smtp_ssl = os.environ.get('SMTP_SSL', 'false').lower() in ('1', 'true', 'yes')
+        self.email_user = os.environ.get('SMTP_USER')
+        self.email_password = os.environ.get('SMTP_PASS')
+        self.from_email = os.environ.get('EMAIL_FROM', self.email_user)
         self.reply_to = os.environ.get('REPLY_TO_EMAIL', self.from_email)
         
+        # Check if email is enabled (same as golf_utils.py)
+        email_enabled = os.environ.get('EMAIL_ENABLED', 'false').lower() in ('1', 'true', 'yes')
+        if not email_enabled:
+            logger.warning("⚠️ Email notifications disabled (set EMAIL_ENABLED=true to enable)")
+            raise ValueError("Email notifications disabled")
+        
         if not all([self.email_user, self.email_password]):
-            logger.error("❌ Email credentials not configured. Set EMAIL_USER and EMAIL_PASSWORD environment variables.")
+            logger.error("❌ Email credentials not configured. Set SMTP_USER and SMTP_PASS environment variables.")
             raise ValueError("Email credentials not configured")
         
-        logger.info(f"📧 Email service initialized with {self.smtp_server}:{self.smtp_port}")
+        logger.info(f"📧 Email service initialized with {self.smtp_server}:{self.smtp_port} (SSL: {self.smtp_ssl})")
     
     def send_email(self, to_email: str, subject: str, content: str, is_html: bool = False) -> bool:
         """Send an email to the specified recipient."""
@@ -73,11 +81,16 @@ class EmailService:
             else:
                 msg.attach(MIMEText(content, 'plain', 'utf-8'))
             
-            # Send email
-            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
+            # Send email (matching golf_utils.py logic)
+            if self.smtp_ssl:
+                server = smtplib.SMTP_SSL(self.smtp_server, self.smtp_port)
+            else:
+                server = smtplib.SMTP(self.smtp_server, self.smtp_port)
                 server.starttls()
-                server.login(self.email_user, self.email_password)
-                server.send_message(msg)
+            
+            server.login(self.email_user, self.email_password)
+            server.send_message(msg)
+            server.quit()
             
             logger.info(f"✅ Email sent successfully to {to_email}")
             return True
@@ -437,12 +450,17 @@ async def run_notification_worker():
         raise
 
 if __name__ == "__main__":
-    # Check required environment variables
-    required_vars = ['EMAIL_USER', 'EMAIL_PASSWORD', 'DATABASE_URL']
+    # Check required environment variables (matching golf_utils.py)
+    required_vars = ['SMTP_USER', 'SMTP_PASS', 'EMAIL_ENABLED', 'DATABASE_URL']
     missing_vars = [var for var in required_vars if not os.environ.get(var)]
     
     if missing_vars:
         logger.error(f"❌ Missing required environment variables: {missing_vars}")
+        logger.error("Set these environment variables:")
+        logger.error("  SMTP_USER=your-email@gmail.com")
+        logger.error("  SMTP_PASS=your-gmail-app-password")
+        logger.error("  EMAIL_ENABLED=true")
+        logger.error("  DATABASE_URL=postgresql://...")
         sys.exit(1)
     
     # Run the notification worker

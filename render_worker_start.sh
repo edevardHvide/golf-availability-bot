@@ -14,18 +14,23 @@ if [ -z "$DATABASE_URL" ]; then
     exit 1
 fi
 
-if [ -z "$EMAIL_USER" ]; then
-    echo "❌ ERROR: EMAIL_USER environment variable is required"
+if [ -z "$SMTP_USER" ]; then
+    echo "❌ ERROR: SMTP_USER environment variable is required"
     exit 1
 fi
 
-if [ -z "$EMAIL_PASSWORD" ]; then
-    echo "❌ ERROR: EMAIL_PASSWORD environment variable is required"
+if [ -z "$SMTP_PASS" ]; then
+    echo "❌ ERROR: SMTP_PASS environment variable is required"
+    exit 1
+fi
+
+if [ -z "$EMAIL_ENABLED" ]; then
+    echo "❌ ERROR: EMAIL_ENABLED environment variable is required (set to 'true')"
     exit 1
 fi
 
 echo "✅ Environment variables configured"
-echo "📧 Email service: $EMAIL_USER"
+echo "📧 Email service: $SMTP_USER"
 echo "🐘 Database: $(echo $DATABASE_URL | sed 's/:[^@]*@/:***@/')"
 
 # Install any additional dependencies if needed
