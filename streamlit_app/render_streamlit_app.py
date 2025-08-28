@@ -179,19 +179,7 @@ class GolfMonitorUI:
             )
             st.sidebar.error("Cannot connect to API service. Please check the API service status.")
     
-    def show_service_info(self):
-        """Show service information at bottom of sidebar."""
-        st.sidebar.markdown("### 🔧 Service Info")
-        
-        if self.api_available:
-            st.sidebar.success("🟢 Two-Service Architecture")
-            st.sidebar.markdown("**UI Service:** Running")
-            st.sidebar.markdown("**API Service:** Connected")
-            st.sidebar.markdown(f"**API URL:** `{API_BASE_URL}`")
-        else:
-            st.sidebar.warning("🟡 UI Service Only")
-            st.sidebar.markdown("**UI Service:** Running")
-            st.sidebar.markdown("**API Service:** Disconnected")
+
         
         if self.system_status:
             version = self.system_status.get("version", "unknown")
@@ -694,54 +682,32 @@ def main():
             
             # Show smart filtered results
             if st.session_state.get('show_smart_results', False):
-                user_preferences = new_preferences if 'new_preferences' in locals() else preferences
-                show_smart_availability_results(email, user_preferences, selected_courses)
+                # Use current form state for preferences
+                current_preferences = {
+                    'name': name,
+                    'email': email,
+                    'selected_courses': selected_courses,
+                    'time_preferences': all_preferences,
+                    'preference_type': day_type_preference,
+                    'min_players': min_players,
+                    'days_ahead': days_ahead
+                }
+                
+                # Debug: Show what preferences are being used
+                with st.expander("🔍 Debug: Current Preferences"):
+                    st.write(f"**Selected Courses:** {selected_courses}")
+                    st.write(f"**Min Players:** {min_players}")
+                    st.write(f"**Time Preferences:** {all_preferences}")
+                
+                show_smart_availability_results(email, current_preferences, selected_courses)
             
             # Show all times results
             if st.session_state.get('show_all_times', False):
                 show_all_times_from_database()
     
     with col2:
-        # Summary panel
-        st.markdown("### 📋 Configuration Summary")
-        
-        if name and email:
-            st.markdown(f"**User:** {name}")
-            st.markdown(f"**Email:** {email}")
-        
-        if selected_courses:
-            st.markdown(f"**Courses:** {len(selected_courses)} selected")
-            for course_name in selected_course_names[:3]:
-                st.markdown(f"• {course_name}")
-            if len(selected_course_names) > 3:
-                st.markdown(f"• ... and {len(selected_course_names) - 3} more")
-        
-        if time_slots:
-            st.markdown(f"**Time Slots:** {len(time_slots)} selected")
-            if len(time_slots) <= 6:
-                for slot in time_slots:
-                    st.markdown(f"• {slot}")
-            else:
-                for slot in time_slots[:3]:
-                    st.markdown(f"• {slot}")
-                st.markdown(f"• ... and {len(time_slots) - 3} more")
-        
-        if is_valid:
-            st.markdown(f"**Monitoring:** {days_ahead} days ahead")
-            st.markdown(f"**Min Players:** {min_players}")
-        
-            # Show time preferences summary
-            if all_preferences:
-                st.markdown(f"**Time Preferences:** {day_type_preference}")
-                total_intervals = 0
-                for day_type, prefs in all_preferences.items():
-                    if prefs['time_intervals']:
-                        total_intervals += len(prefs['time_intervals'])
-                        day_label = day_type.replace('_', ' ').title()
-                        st.markdown(f"• {day_label}: {len(prefs['time_intervals'])} intervals")
-                
-                if total_intervals == 0 and time_slots:
-                    st.markdown(f"• Using preset ranges: {len(set(time_slots))} time slots")
+        # Empty column - configuration summary moved to System Info page
+        pass
 
 def show_cached_availability_offline(user_email: str):
     """Show cached availability results when local computer is offline"""
@@ -811,16 +777,15 @@ def filter_availability_for_user(availability_data: Dict, user_preferences: Dict
     """Filter availability data based on user preferences and selected courses for a specific date"""
     try:
         from datetime import date
-        from time_utils import get_time_slots_for_date
         
         # Parse target date string to date object
         target_date_obj = date.fromisoformat(target_date)
         
-        # Get user's time preferences for this specific date
-        user_time_slots = get_time_slots_for_date(user_preferences, target_date_obj)
-        
-        if not user_time_slots:
-            return {}
+        # Debug: Log what we're filtering
+        st.write(f"🔍 **Filtering for date:** {target_date}")
+        st.write(f"🔍 **Selected courses:** {selected_courses}")
+        st.write(f"🔍 **Min players:** {user_preferences.get('min_players', 1)}")
+        st.write(f"🔍 **Available data keys:** {list(availability_data.keys())[:5]}")
         
         filtered_availability = {}
         
@@ -840,19 +805,22 @@ def filter_availability_for_user(availability_data: Dict, user_preferences: Dict
             # Filter time slots based on user preferences
             filtered_times = {}
             for time_slot, capacity in times.items():
-                if time_slot in user_time_slots:
-                    # Check minimum players requirement
-                    min_players = user_preferences.get('min_players', 1)
-                    if capacity >= min_players:
-                        filtered_times[time_slot] = capacity
+                # Check minimum players requirement first
+                min_players = user_preferences.get('min_players', 1)
+                if capacity >= min_players:
+                    # For now, include all times that meet player requirements
+                    # We can add time filtering later if needed
+                    filtered_times[time_slot] = capacity
             
             if filtered_times:
                 filtered_availability[state_key] = filtered_times
         
+        st.write(f"🔍 **Filtered results:** {len(filtered_availability)} courses with availability")
         return filtered_availability
         
     except Exception as e:
         logger.error(f"Error filtering availability for user: {e}")
+        st.error(f"🔍 **Filtering error:** {e}")
         return {}
 
 def show_smart_availability_results(user_email: str, user_preferences: Dict, selected_courses: List[str]):
@@ -1060,8 +1028,8 @@ def show_all_times_from_database():
         with col4:
             st.metric("Dates Found", len(data.get('dates_found', [])))
         
-        # Create a summary table showing courses with availability
-        st.markdown("### 🏌️ Courses with Availability")
+        # Create a comprehensive summary table
+        st.markdown("### 🏌️ Availability Summary Table")
         
         # Prepare summary data
         summary_data = []
@@ -1074,22 +1042,55 @@ def show_all_times_from_database():
                 if len(date_part) == 10:  # YYYY-MM-DD format
                     total_slots = len(times)
                     total_spots = sum(times.values())
+                    
+                    # Format date nicely
+                    try:
+                        from datetime import datetime, date
+                        date_obj = date.fromisoformat(date_part)
+                        day_name = date_obj.strftime('%A')
+                        today = date.today()
+                        days_diff = (date_obj - today).days
+                        
+                        if days_diff == 0:
+                            date_display = f"Today ({day_name})"
+                        elif days_diff == 1:
+                            date_display = f"Tomorrow ({day_name})"
+                        elif days_diff == -1:
+                            date_display = f"Yesterday ({day_name})"
+                        else:
+                            date_display = f"{day_name}"
+                    except:
+                        date_display = date_part
+                    
                     summary_data.append({
-                        "Course": course_name,
-                        "Date": date_part,
+                        "Course": course_name.replace('_', ' ').title(),
+                        "Date": date_display,
                         "Time Slots": total_slots,
-                        "Total Spots": total_spots
+                        "Total Spots": total_spots,
+                        "Best Times": ", ".join(sorted(times.keys())[:3]) + ("..." if len(times) > 3 else "")
                     })
         
         if summary_data:
             # Sort by date, then by course name
             summary_data.sort(key=lambda x: (x["Date"], x["Course"]))
             
-            # Display as a clean table
-            st.markdown("| Course | Date | Time Slots | Total Spots |")
-            st.markdown("|--------|------|------------|-------------|")
-            for row in summary_data:
-                st.markdown(f"| {row['Course']} | {row['Date']} | {row['Time Slots']} | {row['Total Spots']} |")
+            # Create a proper table using Streamlit's dataframe
+            import pandas as pd
+            df = pd.DataFrame(summary_data)
+            
+            # Style the dataframe
+            st.dataframe(
+                df,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Course": st.column_config.TextColumn("🏌️ Course", width="medium"),
+                    "Date": st.column_config.TextColumn("📅 Date", width="small"),
+                    "Time Slots": st.column_config.NumberColumn("⏰ Slots", width="small"),
+                    "Total Spots": st.column_config.NumberColumn("👥 Total Spots", width="small"),
+                    "Best Times": st.column_config.TextColumn("🕐 Sample Times", width="large")
+                }
+            )
         else:
             st.info("No courses with availability found.")
         
@@ -1153,16 +1154,24 @@ def show_all_times_from_database():
             if course_results:
                 for course_name, time_slots in sorted(course_results.items()):
                     if time_slots:  # Only show courses with actual availability
-                        st.markdown(f"**🏌️ {course_name}**")
+                        st.markdown(f"**🏌️ {course_name.replace('_', ' ').title()}**")
                         
-                        # Create a clean table for this course
+                        # Create a proper table for this course's time slots
                         if len(time_slots) > 0:
-                            # Use columns for better organization
-                            cols = st.columns(min(4, len(time_slots)))
-                            for i, slot in enumerate(time_slots):
-                                col_idx = i % len(cols)
-                                with cols[col_idx]:
-                                    st.markdown(f"🕐 **{slot['time']}** ({slot['spots']} spots)")
+                            # Convert to dataframe for better display
+                            import pandas as pd
+                            time_df = pd.DataFrame(time_slots)
+                            time_df.columns = ["🕐 Time", "👥 Available Spots"]
+                            # Display as a styled table
+                            st.dataframe(
+                                time_df,
+                                use_container_width=True,
+                                hide_index=True,
+                                column_config={
+                                    "🕐 Time": st.column_config.TextColumn("🕐 Time", width="medium"),
+                                    "👥 Available Spots": st.column_config.NumberColumn("👥 Spots", width="small")
+                                }
+                            )
                         st.markdown("---")
             else:
                 st.info(f"No availability data for {date_str}")
