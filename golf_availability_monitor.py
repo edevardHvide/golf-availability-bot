@@ -446,6 +446,32 @@ def send_personalized_notifications(user_preferences: List[Dict], all_availabili
         else:
             console.print(f"📭 No new availability for {user_name} based on their preferences", style="dim")
 
+async def check_session_health(context: BrowserContext) -> bool:
+    """Check if the session is still valid and user is logged in."""
+    try:
+        # Create a temporary page to check login status
+        page = await context.new_page()
+        
+        # Navigate to a simple page that requires authentication
+        await page.goto("https://golfbox.golf/#/", wait_until="domcontentloaded")
+        await page.wait_for_timeout(2000)  # Wait for page to load
+        
+        # Check login status
+        is_logged_in = await check_login_status(page)
+        
+        await page.close()
+        
+        if is_logged_in:
+            console.print("✅ Session health check: User is still logged in", style="green")
+        else:
+            console.print("⚠️ Session health check: User appears to be logged out", style="yellow")
+        
+        return is_logged_in
+        
+    except Exception as e:
+        console.print(f"⚠️ Session health check failed: {e}", style="yellow")
+        return False
+
 def is_scheduled_time() -> bool:
     """Check if current time is one of the scheduled notification times (9am, 12pm, 9pm)"""
     now = datetime.datetime.now()
@@ -512,12 +538,25 @@ async def run_scheduled_monitoring(args, time_window, window_str):
                     # Perform the availability check
                     await perform_availability_check(args, time_window, window_str, user_preferences, previous_state, context)
                     
+                    # Session health check after each scheduled run
+                    console.print("\n🔍 Performing session health check...", style="cyan")
+                    session_healthy = await check_session_health(context)
+                    
+                    if not session_healthy:
+                        console.print("⚠️ Session appears to be invalid. Attempting to re-authenticate...", style="yellow")
+                        login_success = await automatic_login(pw, context)
+                        if not login_success:
+                            console.print("❌ Re-authentication failed. Exiting.", style="red")
+                            break
+                        else:
+                            console.print("✅ Re-authentication successful!", style="green")
+                    
                     # Wait a bit to avoid duplicate runs in the same 5-minute window
                     await asyncio.sleep(300)  # 5 minutes
                 else:
                     # Wait until next scheduled time
                     wait_seconds = wait_for_next_scheduled_time()
-                    await asyncio.sleep(min(wait_seconds, 300))  # Check every 5 minutes or until next scheduled time
+                    await asyncio.sleep(min(wait_seconds, 1200))  # Check every 20 minutes or until next scheduled time
                     
         except KeyboardInterrupt:
             console.print("\n\n👋 Scheduled monitoring stopped. Happy golfing!", style="bold blue")
@@ -824,16 +863,16 @@ async def main():
     parser = argparse.ArgumentParser(description="Golf Availability Monitor")
     parser.add_argument("--time-window", default="16:00-18:00", 
                        help="Time window to monitor (default: 16:00-18:00)")
-    parser.add_argument("--interval", type=int, default=300, 
-                       help="Check interval in seconds (default: 300 = 5 minutes)")
+    parser.add_argument("--interval", type=int, default=1200, 
+                       help="Check interval in seconds (default: 1200 = 20 minutes)")
     parser.add_argument("--scheduled", action="store_true",
                        help="Run in scheduled mode - only check at 9am, 12pm, and 9pm")
     parser.add_argument("--immediate", action="store_true",
                        help="Run immediate check once and exit")
     parser.add_argument("--players", type=int, default=3, 
                        help="Minimum number of available slots required (default: 3)")
-    parser.add_argument("--days", type=int, default=2,
-                       help="Number of days to check from today (default: 2)")
+    parser.add_argument("--days", type=int, default=3,
+                       help="Number of days to check from today (default: 3)")
     parser.add_argument("--local", action="store_true", 
                        help="Run in local mode - skip API/UI, use only CLI arguments and environment variables")
     args = parser.parse_args()
@@ -848,6 +887,7 @@ async def main():
 
     console.print("🏌️ Golf Availability Monitor - Personalized Edition", style="bold blue")
     console.print("=" * 60)
+    console.print("⚡ Default: 20-minute intervals, 3 days ahead monitoring", style="cyan")
     
     # Handle scheduled mode
     if args.scheduled:
@@ -920,7 +960,7 @@ async def main():
     
     console.print(f"Monitoring {len(club_keys)} courses total", style="blue")
     console.print(f"Time window: {window_str}", style="blue")
-    console.print(f"Check interval: {args.interval} seconds", style="blue")
+    console.print(f"Check interval: {args.interval} seconds ({args.interval//60} minutes)", style="blue")
     
     # Show course list
     console.print("\nCourses to monitor:", style="cyan")
@@ -1075,6 +1115,20 @@ async def main():
                 
                 # Update previous state
                 previous_state = current_state.copy()
+                
+                # Session health check every 4 cycles (every ~80 minutes with 20-minute intervals)
+                if cycle % 4 == 0:
+                    console.print("\n🔍 Performing session health check...", style="cyan")
+                    session_healthy = await check_session_health(context)
+                    
+                    if not session_healthy:
+                        console.print("⚠️ Session appears to be invalid. Attempting to re-authenticate...", style="yellow")
+                        login_success = await automatic_login(pw, context)
+                        if not login_success:
+                            console.print("❌ Re-authentication failed. Exiting.", style="red")
+                            break
+                        else:
+                            console.print("✅ Re-authentication successful!", style="green")
                 
                 # Wait for next check
                 next_check = datetime.datetime.now() + datetime.timedelta(seconds=args.interval)

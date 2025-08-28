@@ -357,17 +357,29 @@ def main():
     
     with col_header_image:
         try:
-            st.markdown('<div class="hero-image">', unsafe_allow_html=True)
-            st.image("streamlit_app/assets/907d8ed5-d913-4739-8b1e-c66e7231793b.jpg", 
-                    caption="Perfect your swing!", 
-                    use_container_width=True)
-            st.markdown('</div>', unsafe_allow_html=True)
-        except:
+            # Display the golf image using proper Streamlit image parameters
+            st.image(
+                "assets/907d8ed5-d913-4739-8b1e-c66e7231793b.jpg",
+                caption="Perfect your swing! ⛳",
+                width=300,  # Fixed width for better layout control
+                use_column_width=False,  # Don't stretch to column width
+                clamp=False  # Don't clamp pixel values
+            )
+        except FileNotFoundError:
             # Fallback if image not found
             st.markdown("""
             <div style="background: #f0f0f0; padding: 2rem; border-radius: 10px; text-align: center;">
                 <h3>🏌️</h3>
                 <p>Golf Image</p>
+            </div>
+            """, unsafe_allow_html=True)
+        except Exception as e:
+            # Other errors
+            st.markdown("""
+            <div style="background: #f0f0f0; padding: 2rem; border-radius: 10px; text-align: center;">
+                <h3>🏌️</h3>
+                <p>Golf Image</p>
+                <small>Error loading image</small>
             </div>
             """, unsafe_allow_html=True)
     

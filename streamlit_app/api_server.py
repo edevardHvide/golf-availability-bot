@@ -393,22 +393,59 @@ async def list_backups():
 
 @app.get("/api/cached-availability")
 async def get_cached_availability(user_email: str = None, hours_limit: int = 24):
-    """Get cached availability results for offline access."""
+    """Get cached availability results from database."""
     try:
-        # For JSON-based storage, we don't have a dedicated cache system
-        # Return a helpful message about how caching works
-        return {
-            "success": True,
-            "cached": False,
-            "message": "💾 No recent cached results available. Data will be available after your local computer runs a check.",
-            "note": "The cached availability feature requires your local golf monitor to be running and checking for availability. This API service stores user preferences but doesn't perform golf course checks itself.",
-            "availability": {},
-            "instructions": [
-                "1. Run your local golf monitor with: python golf_availability_monitor.py",
-                "2. Or use the scheduled monitoring to get automatic updates",
-                "3. Results will be cached and available here after each check"
-            ]
-        }
+        # Try to use PostgreSQL manager if available
+        try:
+            from postgresql_manager import get_db_manager
+            db_manager = get_db_manager()
+            
+            # Get latest cached availability
+            cached_data = db_manager.get_latest_cached_availability(user_email, hours_limit)
+            
+            if cached_data:
+                # Extract availability data from the cached result
+                availability_data = cached_data.get('availability_data', {})
+                check_timestamp = cached_data.get('check_timestamp')
+                
+                return {
+                    "success": True,
+                    "cached": True,
+                    "check_timestamp": check_timestamp,
+                    "availability": availability_data,
+                    "total_courses": cached_data.get('total_courses', 0),
+                    "total_availability_slots": cached_data.get('total_availability_slots', 0),
+                    "message": f"✅ Retrieved {len(availability_data)} course results from database"
+                }
+            else:
+                return {
+                    "success": True,
+                    "cached": False,
+                    "message": "💾 No recent cached results available. Data will be available after your local computer runs a check.",
+                    "note": "The cached availability feature requires your local golf monitor to be running and checking for availability.",
+                    "availability": {},
+                    "instructions": [
+                        "1. Run your local golf monitor with: python golf_availability_monitor.py",
+                        "2. Or use the scheduled monitoring to get automatic updates",
+                        "3. Results will be cached and available here after each check"
+                    ]
+                }
+                
+        except ImportError:
+            # Fallback to JSON-based storage message
+            return {
+                "success": True,
+                "cached": False,
+                "message": "💾 No recent cached results available. Data will be available after your local computer runs a check.",
+                "note": "The cached availability feature requires your local golf monitor to be running and checking for availability. This API service stores user preferences but doesn't perform golf course checks itself.",
+                "availability": {},
+                "instructions": [
+                    "1. Run your local golf monitor with: python golf_availability_monitor.py",
+                    "2. Or use the scheduled monitoring to get automatic updates",
+                    "3. Results will be cached and available here after each check"
+                ]
+            }
+            
     except Exception as e:
         logger.error(f"Error getting cached availability: {e}")
         return {
@@ -416,6 +453,82 @@ async def get_cached_availability(user_email: str = None, hours_limit: int = 24)
             "cached": False,
             "error": str(e),
             "message": "Error retrieving cached availability data"
+        }
+
+@app.get("/api/all-times")
+async def get_all_times():
+    """Get all available times from the latest database entry."""
+    try:
+        # Try to use PostgreSQL manager if available
+        try:
+            from postgresql_manager import get_db_manager
+            db_manager = get_db_manager()
+            
+            # Get latest cached availability (no time limit to get the most recent)
+            cached_data = db_manager.get_latest_cached_availability(hours_limit=168)  # 7 days
+            
+            if cached_data:
+                # Extract availability data from the cached result
+                availability_data = cached_data.get('availability_data', {})
+                check_timestamp = cached_data.get('check_timestamp')
+                
+                # Count total slots across all courses and dates
+                total_slots = 0
+                courses_with_data = 0
+                dates_found = set()
+                
+                for state_key, times in availability_data.items():
+                    if '_' in state_key:
+                        course_name = state_key.split('_')[0]
+                        date_part = state_key.split('_')[-1]
+                        if len(date_part) == 10:  # YYYY-MM-DD format
+                            dates_found.add(date_part)
+                            if times:
+                                courses_with_data += 1
+                                total_slots += len(times)
+                
+                return {
+                    "success": True,
+                    "cached": True,
+                    "check_timestamp": check_timestamp,
+                    "availability": availability_data,
+                    "total_courses": cached_data.get('total_courses', 0),
+                    "total_availability_slots": total_slots,
+                    "courses_with_data": courses_with_data,
+                    "dates_found": sorted(list(dates_found)),
+                    "message": f"✅ Retrieved {len(availability_data)} course results with {total_slots} total time slots"
+                }
+            else:
+                return {
+                    "success": True,
+                    "cached": False,
+                    "message": "💾 No cached results available. Run the golf monitor to collect data.",
+                    "availability": {},
+                    "total_courses": 0,
+                    "total_availability_slots": 0,
+                    "courses_with_data": 0,
+                    "dates_found": []
+                }
+                
+        except ImportError:
+            return {
+                "success": False,
+                "cached": False,
+                "message": "PostgreSQL manager not available. Database connection required.",
+                "availability": {},
+                "total_courses": 0,
+                "total_availability_slots": 0,
+                "courses_with_data": 0,
+                "dates_found": []
+            }
+            
+    except Exception as e:
+        logger.error(f"Error getting all times: {e}")
+        return {
+            "success": False,
+            "cached": False,
+            "error": str(e),
+            "message": "Error retrieving all times data"
         }
 
 if __name__ == "__main__":

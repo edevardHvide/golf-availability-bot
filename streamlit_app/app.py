@@ -206,7 +206,7 @@ class GolfMonitorApp:
                 '<div class="status-indicator status-warning">🟡 API Offline (Local Mode)</div>',
                 unsafe_allow_html=True
             )
-    else:
+        else:
             st.sidebar.markdown(
                 '<div class="status-indicator status-error">🔴 System Issues</div>',
                 unsafe_allow_html=True
@@ -306,11 +306,11 @@ class GolfMonitorApp:
             FALLBACK_PREFERENCES_FILE.parent.mkdir(parents=True, exist_ok=True)
             with open(FALLBACK_PREFERENCES_FILE, 'w') as f:
                 json.dump(existing_data, f, indent=2)
-        
-        return True
-    except Exception as e:
+            
+            return True
+        except Exception as e:
             logger.error(f"Fallback save failed: {e}")
-        return False
+            return False
 
     def get_available_courses(self) -> List[Dict]:
         """Get list of available golf courses - using static data for efficiency."""
@@ -345,33 +345,13 @@ class GolfMonitorApp:
                 
                 if "users" in data:
                     return list(data["users"].keys())
-    except Exception:
-        pass
+        except Exception:
+            pass
     
         return []
     
-    def send_test_notification(self, email: str, name: str) -> bool:
-        """Send a test notification."""
-        try:
-            if self.api_available:
-                response = requests.post(
-                    f"{API_BASE_URL}/api/test-notification",
-                    json={"email": email, "name": name},
-                    timeout=10
-                )
-                if response.status_code == 200:
-                    result = response.json()
-                    if result.get("type") == "demo_mode":
-                        st.info("📧 Demo Mode: Test notification simulated successfully")
-            else:
-                        st.success("📧 Test notification sent successfully!")
-                    return True
-        else:
-                    st.error(f"Failed to send test notification: {response.text}")
-        except Exception as e:
-            st.error(f"Error sending test notification: {e}")
-        
-        return False
+    # Test notification function removed
+    pass
     
     def show_profile_management(self):
         """Show profile loading/management section."""
@@ -408,8 +388,8 @@ class GolfMonitorApp:
                 st.session_state.user_preferences = preferences
                 st.session_state.current_user_email = email_to_load
                 st.success(f"✅ Loaded profile for {preferences.get('name', email_to_load)}")
-                        st.rerun()
-                    else:
+                st.rerun()
+            else:
                 st.warning(f"❌ No profile found for {email_to_load}")
         
         # Show current loaded profile
@@ -424,9 +404,9 @@ class GolfMonitorApp:
             """, unsafe_allow_html=True)
             
             if st.sidebar.button("🗑️ Clear Profile"):
-        st.session_state.user_preferences = {}
+                st.session_state.user_preferences = {}
                 st.session_state.current_user_email = None
-        st.rerun()
+                st.rerun()
     
 def main():
     """Main Streamlit application."""
@@ -442,26 +422,38 @@ def main():
     col_header_text, col_header_image = st.columns([2, 1])
     
     with col_header_text:
-    st.markdown("""
-    <div class="main-header">
-        <h1>🏌️ Golf Availability Monitor</h1>
+        st.markdown("""
+        <div class="main-header">
+            <h1>🏌️ Golf Availability Monitor</h1>
             <p>Smart tee time notifications with instant availability checking</p>
         </div>
         """, unsafe_allow_html=True)
     
     with col_header_image:
         try:
-            st.markdown('<div class="hero-image">', unsafe_allow_html=True)
-            st.image("./streamlit_app/assets/907d8ed5-d913-4739-8b1e-c66e7231793b.jpg", 
-                    caption="Perfect your swing!", 
-                    use_container_width=True)
-            st.markdown('</div>', unsafe_allow_html=True)
-        except:
+            # Display the golf image using proper Streamlit image parameters
+            st.image(
+                "assets/907d8ed5-d913-4739-8b1e-c66e7231793b.jpg",
+                caption="Perfect your swing! ⛳",
+                width=300,  # Fixed width for better layout control
+                use_column_width=False,  # Don't stretch to column width
+                clamp=False  # Don't clamp pixel values
+            )
+        except FileNotFoundError:
             # Fallback if image not found
             st.markdown("""
             <div style="background: #f0f0f0; padding: 2rem; border-radius: 10px; text-align: center;">
                 <h3>🏌️</h3>
                 <p>Golf Image</p>
+            </div>
+            """, unsafe_allow_html=True)
+        except Exception as e:
+            # Other errors
+            st.markdown("""
+            <div style="background: #f0f0f0; padding: 2rem; border-radius: 10px; text-align: center;">
+                <h3>🏌️</h3>
+                <p>Golf Image</p>
+                <small>Error loading image</small>
             </div>
             """, unsafe_allow_html=True)
     
@@ -726,13 +718,13 @@ def main():
         st.markdown("### 💾 Save Configuration")
         
         # Validate preferences
-            validation_issues = []
-            if not name:
-                validation_issues.append("Enter your name")
-            if not email:
-                validation_issues.append("Enter your email")
-            if not selected_courses:
-                validation_issues.append("Select at least one golf course")
+        validation_issues = []
+        if not name:
+            validation_issues.append("Enter your name")
+        if not email:
+            validation_issues.append("Enter your email")
+        if not selected_courses:
+            validation_issues.append("Select at least one golf course")
         
         # Validate time preferences using utility function
         time_validation_errors = validate_time_preferences({
@@ -749,23 +741,23 @@ def main():
         col_save1, col_save2, col_save3 = st.columns(3)
         
         with col_save1:
-        if st.button("💾 Save Profile", disabled=not is_valid, use_container_width=True):
-            # Check if this is an existing user
+            if st.button("💾 Save Profile", disabled=not is_valid, use_container_width=True):
+                # Check if this is an existing user
                 existing_prefs = app.load_preferences_from_api(email)
                 is_existing_user = bool(existing_prefs)
                 
                 # Create preferences object with proper structure
-            new_preferences = {
-                'name': name,
-                'email': email,
-                'selected_courses': selected_courses,
+                new_preferences = {
+                    'name': name,
+                    'email': email,
+                    'selected_courses': selected_courses,
                     'time_preferences': all_preferences,
                     'preference_type': day_type_preference,
-                'min_players': min_players,
-                'days_ahead': days_ahead,
-                'timestamp': datetime.now().isoformat()
-            }
-            
+                    'min_players': min_players,
+                    'days_ahead': days_ahead,
+                    'timestamp': datetime.now().isoformat()
+                }
+                
                 # Save preferences
                 success = app.save_preferences_to_api(new_preferences)
                 
@@ -782,8 +774,8 @@ def main():
                     st.error("❌ Failed to save profile. Please try again.")
         
         with col_save2:
-        if st.button("🧪 Test Notification", disabled=not (name and email), use_container_width=True):
-                app.send_test_notification(email, name)
+            # Test notification button removed
+            pass
         
         with col_save3:
             if st.button("🗑️ Clear Form", use_container_width=True):
@@ -797,7 +789,7 @@ def main():
             st.markdown("### 📊 Smart Availability Check")
             st.info("⚡ **Instant Results:** Shows latest cached data filtered for your preferences.")
             
-            col_check1, col_check2 = st.columns(2)
+            col_check1, col_check2, col_check3 = st.columns(3)
             
             with col_check1:
                 if st.button("📊 Check Now", use_container_width=True, type="primary"):
@@ -806,6 +798,12 @@ def main():
                     st.rerun()
             
             with col_check2:
+                if st.button("🌐 Get All Times", use_container_width=True, type="secondary"):
+                    # Show all times from database
+                    st.session_state.show_all_times = True
+                    st.rerun()
+            
+            with col_check3:
                 if st.button("🔄 Refresh", use_container_width=True):
                     st.rerun()
             
@@ -813,6 +811,10 @@ def main():
             if st.session_state.get('show_smart_results', False):
                 user_preferences = new_preferences if 'new_preferences' in locals() else preferences
                 show_smart_availability_results(email, user_preferences, selected_courses)
+            
+            # Show all times from database
+            if st.session_state.get('show_all_times', False):
+                show_all_times_from_database()
     
     with col2:
         # Summary panel
@@ -982,7 +984,7 @@ def show_smart_availability_results(user_email: str, user_preferences: Dict, sel
                         date_display = f"Tomorrow ({day_name}, {date_str})"
                     elif days_diff == -1:
                         date_display = f"Yesterday ({day_name}, {date_str})"
-            else:
+                    else:
                         date_display = f"{day_name}, {date_str}"
                         
                 except:
@@ -1030,7 +1032,7 @@ def show_smart_availability_results(user_email: str, user_preferences: Dict, sel
                 
                 st.write(f"**Minimum Players:** {user_preferences.get('min_players', 1)}")
                 st.write(f"**Days Ahead:** {user_preferences.get('days_ahead', 4)}")
-            else:
+        else:
             st.info("🚫 No availability found matching your specific preferences.")
             st.markdown("**Your filters:**")
             st.write(f"• **Courses:** {', '.join([c.replace('_', ' ').title() for c in selected_courses])}")
@@ -1048,6 +1050,118 @@ def show_smart_availability_results(user_email: str, user_preferences: Dict, sel
     except Exception as e:
         st.error(f"❌ Error displaying smart results: {e}")
         logger.error(f"Smart results error: {e}")
+
+def show_all_times_from_database():
+    """Show all available times from the latest database entry."""
+    try:
+        # Get all times from API
+        response = requests.get(f"{API_BASE_URL}/api/all-times", timeout=10)
+        
+        if response.status_code != 200:
+            st.error("❌ Cannot retrieve all times data from database.")
+            return
+        
+        data = response.json()
+        
+        if not data.get("cached"):
+            st.info(data.get("message", "💾 No cached results available. Run the golf monitor to collect data."))
+            return
+        
+        # Display header with comprehensive info
+        st.markdown("#### 🌐 All Available Times (Database)")
+        
+        # Show cache info
+        cache_time = data.get('check_timestamp', '')
+        if cache_time:
+            try:
+                from datetime import datetime
+                dt = datetime.fromisoformat(cache_time.replace('Z', '+00:00'))
+                time_str = dt.strftime('%Y-%m-%d %H:%M:%S')
+                hours_ago = (datetime.now() - dt).total_seconds() / 3600
+                
+                if hours_ago < 1:
+                    freshness = f"{int(hours_ago * 60)} minutes ago"
+                else:
+                    freshness = f"{hours_ago:.1f} hours ago"
+                    
+                st.caption(f"📅 Data from: {time_str} ({freshness})")
+            except:
+                st.caption(f"📅 Data from: {cache_time}")
+        
+        # Show summary statistics
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Courses", data.get('total_courses', 0))
+        with col2:
+            st.metric("Courses with Data", data.get('courses_with_data', 0))
+        with col3:
+            st.metric("Total Time Slots", data.get('total_availability_slots', 0))
+        with col4:
+            st.metric("Dates Found", len(data.get('dates_found', [])))
+        
+        # Get availability data
+        availability = data.get("availability", {})
+        
+        if not availability:
+            st.info("🚫 No availability data in database.")
+            return
+        
+        # Get unique dates from the data
+        dates_found = data.get('dates_found', [])
+        
+        if not dates_found:
+            st.info("🚫 No valid dates found in database.")
+            return
+        
+        # Show results for each date
+        for date_str in dates_found:
+            # Display date header
+            try:
+                from datetime import datetime, date
+                date_obj = date.fromisoformat(date_str)
+                day_name = date_obj.strftime('%A')
+                
+                # Check if it's today, tomorrow, etc.
+                today = date.today()
+                days_diff = (date_obj - today).days
+                
+                if days_diff == 0:
+                    date_display = f"Today ({day_name}, {date_str})"
+                elif days_diff == 1:
+                    date_display = f"Tomorrow ({day_name}, {date_str})"
+                elif days_diff == -1:
+                    date_display = f"Yesterday ({day_name}, {date_str})"
+                else:
+                    date_display = f"{day_name}, {date_str}"
+                    
+            except:
+                date_display = date_str
+            
+            st.markdown(f"### 📅 {date_display}")
+            
+            # Group by course and display
+            course_results = {}
+            for state_key, times in availability.items():
+                if state_key.endswith(f"_{date_str}"):
+                    course_name = state_key.replace(f"_{date_str}", "")
+                    if course_name not in course_results:
+                        course_results[course_name] = []
+                    
+                    for time_slot, capacity in sorted(times.items()):
+                        course_results[course_name].append(f"{time_slot} ({capacity} spots)")
+            
+            # Display course results
+            if course_results:
+                for course_name, time_slots in sorted(course_results.items()):
+                    st.markdown(f"**🏌️ {course_name}:** {', '.join(time_slots)}")
+            else:
+                st.info(f"No availability data for {date_str}")
+        
+        st.success(f"✅ Retrieved {len(availability)} course results with {data.get('total_availability_slots', 0)} total time slots")
+            
+    except Exception as e:
+        st.error(f"❌ Error displaying all times: {e}")
+        logger.error(f"Error in show_all_times_from_database: {e}")
 
 if __name__ == "__main__":
     main()
