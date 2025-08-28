@@ -1,38 +1,203 @@
-# Golf Availability Bot
+# ⛳ Golf Availability Bot - Complete Notification System
 
-## Overview
+## 🎯 Overview
 
-The Golf Availability Bot is a Python application designed to check and notify users about available tee times for golf courses listed on the Golfbox booking website (`https://golfbox.golf/#/`). It uses web scraping techniques to fetch the available tee times for a specified golf course and date.
+The Golf Availability Bot is a comprehensive Norwegian golf availability monitoring and notification system. It automatically scrapes golf course availability from Golfbox and sends personalized Norwegian email notifications to users based on their preferences.
 
-## Features
+## ✨ Key Features
 
-- Fetches available tee times for a given golf course and date from Golfbox's website.
-- Sends desktop notifications when new tee times become available.
-- Supports monitoring multiple golf courses simultaneously.
-- Time filtering to focus on specific time ranges (e.g., afternoon rounds).
-- Beautiful console output with colored tables and status indicators.
+### 🔔 Automated Notifications
+- **Daily Morning Reports** (07:00 UTC) - Personalized Norwegian summaries
+- **Immediate New Availability Alerts** (every 10 minutes) - Real-time notifications
+- **No Duplicate Notifications** - Database prevents repeat alerts
+- **Personalized Content** - Tailored to each user's courses and time preferences
 
-### New: Playwright-based Local Runner (optional)
+### 🌐 Multi-Service Architecture
+- **Streamlit UI** - User-friendly preference management
+- **FastAPI Backend** - Robust data handling and API endpoints
+- **Background Worker** - 24/7 notification monitoring on Render
+- **PostgreSQL Database** - Reliable data persistence and tracking
 
-- Uses a real Chromium browser via Playwright
-- Persists login cookies/localStorage in `state.json` so you rarely need to log in again
-- Directly navigates to your GolfBox legacy grid URL(s)
-- Parses for "Ledig/Available" slots using text and ARIA heuristics
-- Checks every 5 minutes with a small jitter and only notifies on new openings
+### 🏌️ Golf Course Monitoring
+- **Multiple Course Support** - Monitor dozens of golf courses simultaneously
+- **Time Window Filtering** - Focus on preferred tee times
+- **Real Browser Automation** - Uses Playwright for reliable scraping
+- **Smart Login Management** - Persistent session handling
+
+### 📧 Professional Email System
+- **Norwegian Language** - All notifications in professional Norwegian
+- **Gmail Integration** - Uses your existing Gmail account
+- **HTML & Plain Text** - Beautiful formatting with fallback support
+- **Error Resilience** - Graceful handling of email service issues
+
+## 🏗️ System Architecture
+
+### Complete Cloud + Local Setup
+
+```mermaid
+graph TB
+    %% Users and External Systems
+    Users[👥 Golf Users]
+    Gmail[📧 Gmail SMTP]
+    RenderDB[(🐘 PostgreSQL<br/>Database)]
+    
+    %% Render Services
+    subgraph "🌐 Render Cloud Platform"
+        UI[🖥️ Streamlit UI<br/>Web Service]
+        API[⚙️ FastAPI Server<br/>Web Service] 
+        Worker[🔔 Notification Worker<br/>Background Service]
+    end
+    
+    %% Local/External Monitoring
+    subgraph "📍 Local/External"
+        Monitor[🏌️ Golf Monitor<br/>Scraping System]
+        LocalData[📊 Availability Data]
+    end
+    
+    %% User Interactions
+    Users -.->|"1. Configure preferences<br/>courses, times, email"| UI
+    UI -->|"2. Save user settings"| API
+    API -->|"3. Store preferences"| RenderDB
+    
+    %% Data Flow
+    Monitor -->|"4. Scrape golf sites"| LocalData
+    LocalData -->|"5. Send availability data"| RenderDB
+    
+    %% Notification Flow  
+    Worker -->|"6a. Check for matches<br/>every 10 minutes"| RenderDB
+    Worker -->|"6b. Send daily reports<br/>07:00 UTC"| RenderDB
+    Worker -->|"7. Send Norwegian emails"| Gmail
+    Gmail -.->|"8. Deliver notifications"| Users
+```
+
+### 🔄 User Journey
+
+1. **Setup**: Users configure preferences via Streamlit UI
+2. **Monitoring**: Local golf monitor scrapes course availability  
+3. **Processing**: Data stored in PostgreSQL database
+4. **Notifications**: Background worker sends personalized Norwegian emails
+5. **Delivery**: Users receive daily reports and immediate alerts
+
+### 🎯 Three-Service Architecture
+
+| Service | Type | Purpose | Technology |
+|---------|------|---------|------------|
+| **UI Service** | Web Service | User preference management | Streamlit |
+| **API Service** | Web Service | Data operations & endpoints | FastAPI |
+| **Notification Worker** | Background Service | Automated email notifications | Python + SMTP |
+
+## 📧 Sample Norwegian Notifications
+
+### Daily Morning Report (07:00 UTC)
+```
+Subject: ⛳ Daglig golfrapport for John - 3 tilgjengelige tider
+
+Hei John!
+
+Her er din daglige oversikt over tilgjengelige golftider som matcher dine preferanser:
+
+🏌️ Oslo Golf Club:
+  📅 I dag (2024-08-28):
+    ⏰ 09:00 - 4 plasser
+    ⏰ 14:00 - 2 plasser
+
+🏌️ Bergen Golf Course:
+  📅 I morgen (2024-08-29):
+    ⏰ 10:30 - 3 plasser
+
+Lykke til med å booke! 🍀
+
+Mvh,
+Golf Availability Monitor
+```
+
+### New Availability Alert (Every 10 minutes)
+```
+Subject: 🚨 Nye golftider tilgjengelig for John - 2 nye plasser!
+
+Hei John!
+
+Vi har funnet 2 nye golftider som matcher dine preferanser:
+
+🏌️ Oslo Golf Club:
+  📅 I dag kl. 15:30 - 2 plasser
+  📅 Fredag 01.09 kl. 09:00 - 4 plasser
+
+⚡ Disse tidene er nylig blitt tilgjengelige, så vær rask med å booke!
+
+Lykke til! 🍀
+
+Mvh,
+Golf Availability Monitor
+```
+
+## 🚀 Quick Start
+
+### For End Users (Receive Notifications)
+1. **Access the Streamlit UI** - Configure your golf preferences
+2. **Set Your Preferences** - Choose courses, times, and email
+3. **Receive Notifications** - Get daily reports and instant alerts
+
+### For System Administrators
+1. **Deploy to Render** - Set up the three services (UI, API, Worker)
+2. **Configure Email** - Set up Gmail SMTP credentials
+3. **Monitor Operation** - Check logs and database for health
 
 ## Pre-requisites
 
-- Windows 10/11 or macOS
+- Windows 10/11 or macOS (for local development)
+- Render account (for cloud deployment)
+- Gmail account (for email notifications)
 - No global Python required if you use `uv` (recommended)
 
-## Installation
+## 🔧 Installation & Deployment
 
-### Clone the Repository
+### 📋 Render Cloud Deployment (Recommended)
 
-First, clone the repository to your local machine:
+The complete system runs on Render with three services:
+
+#### 1. Deploy UI Service (Streamlit)
+```bash
+# Service Type: Web Service
+# Build Command: pip install -r streamlit_app/requirements.txt
+# Start Command: streamlit run streamlit_app/render_streamlit_app.py --server.port=$PORT
+```
+
+#### 2. Deploy API Service (FastAPI)  
+```bash
+# Service Type: Web Service
+# Build Command: pip install -r requirements.txt
+# Start Command: python streamlit_app/render_api_server_postgresql.py
+```
+
+#### 3. Deploy Notification Worker (Background Service)
+```bash
+# Service Type: Background Worker
+# Build Command: pip install -r requirements.txt  
+# Start Command: bash render_worker_start.sh
+```
+
+#### 4. Environment Variables for Notification Worker
+```bash
+# Database
+DATABASE_URL=postgresql://user:pass@host:port/db?sslmode=require
+
+# Email (Gmail)
+EMAIL_ENABLED=true
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your-email@gmail.com
+SMTP_PASS=your-gmail-app-password
+EMAIL_FROM=your-email@gmail.com
+```
+
+### 🏠 Local Development
+
+#### Clone the Repository
 
 ```bash
 git clone <repository_url>
+cd golf-availability-bot
 ```
 
 ### Install with uv (recommended)
@@ -326,6 +491,45 @@ Feel free to submit issues and enhancement requests! To add new golf courses:
 1. Find the course on golfbox.no
 2. Add the course name and slug/ID to `facilities.py`
 3. Test with `--debug` flag to ensure it works
+
+## 🔔 Notification System
+
+### Norwegian Email Notifications
+
+The system automatically sends professional Norwegian email notifications:
+
+#### 🌅 Daily Morning Reports (07:00 UTC)
+- **Personalized summaries** of available times matching user preferences
+- **Course-specific filtering** based on user's selected golf courses
+- **Time window filtering** for preferred tee times
+- **Only sent when matches exist** - no spam emails
+
+#### ⚡ Immediate New Availability Alerts (Every 10 minutes)
+- **Real-time notifications** when new times become available
+- **Duplicate prevention** - never sends the same alert twice
+- **Professional Norwegian content** with course details and booking urgency
+- **Smart timing** - checks every 10 minutes for new opportunities
+
+### 🎯 User Experience
+
+1. **Set Preferences Once** - Configure courses, times, and email via Streamlit UI
+2. **Receive Notifications** - Get relevant alerts automatically
+3. **Book Quickly** - Norwegian emails with clear course and time information
+4. **Stay Informed** - Daily summaries keep you updated on availability trends
+
+### 📊 System Monitoring
+
+- **Database Tracking** - All notifications logged for analytics
+- **Error Resilience** - System continues operating even if email service is temporarily down
+- **Health Monitoring** - Render dashboard shows all service status and logs
+- **Scalable Architecture** - Handles multiple users with personalized notifications
+
+### 🔧 Technical Implementation
+
+- **Background Worker** - Runs 24/7 on Render cloud platform
+- **PostgreSQL Database** - Reliable data persistence and duplicate prevention
+- **Gmail SMTP** - Professional email delivery using your existing Gmail account
+- **Norwegian Templates** - Culturally appropriate and professional email content
 
 ## License
 
