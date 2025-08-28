@@ -245,26 +245,7 @@ class GolfMonitorUI:
             pass
         return []
     
-    def send_test_notification(self, email: str, name: str) -> bool:
-        """Send test notification via API."""
-        try:
-            response = requests.post(
-                f"{API_BASE_URL}/api/test-notification",
-                json={"email": email, "name": name},
-                timeout=10
-            )
-            if response.status_code == 200:
-                result = response.json()
-                if result.get("type") == "demo_mode":
-                    st.info("📧 Demo Mode: Test notification simulated")
-                else:
-                    st.success("📧 Test notification sent!")
-                return True
-            else:
-                st.error(f"Failed to send notification: {response.status_code}")
-        except Exception as e:
-            st.error(f"Error sending notification: {e}")
-        return False
+
     
     def generate_time_slots(self) -> List[str]:
         """Generate time slots for selection."""
@@ -679,8 +660,10 @@ def main():
                     st.error(f"❌ {message}")
         
         with col_save2:
-            if st.button("🧪 Test Notification", disabled=not (name and email), use_container_width=True):
-                ui.send_test_notification(email, name)
+            # Availability check button - always available
+            if st.button("📊 Check Now", use_container_width=True, type="primary"):
+                st.session_state.show_smart_results = True
+                st.rerun()
         
         # Smart availability check section - shows cached data instantly
         if name and email and selected_courses and time_slots:
@@ -688,7 +671,7 @@ def main():
             st.markdown("### 📊 Smart Availability Check")
             st.info("⚡ **Instant Results:** Shows latest cached data filtered for your preferences.")
             
-            col_check1, col_check2 = st.columns(2)
+            col_check1, col_check2, col_check3 = st.columns(3)
             
             with col_check1:
                 if st.button("📊 Check Now", use_container_width=True, type="primary"):
@@ -697,6 +680,12 @@ def main():
                     st.rerun()
             
             with col_check2:
+                if st.button("🌐 Get All Times", use_container_width=True, type="secondary"):
+                    # Show all times from database
+                    st.session_state.show_all_times = True
+                    st.rerun()
+            
+            with col_check3:
                 if st.button("🔄 Refresh", use_container_width=True):
                     st.rerun()
             
@@ -704,6 +693,10 @@ def main():
             if st.session_state.get('show_smart_results', False):
                 user_preferences = new_preferences if 'new_preferences' in locals() else preferences
                 show_smart_availability_results(email, user_preferences, selected_courses)
+            
+            # Show all times results
+            if st.session_state.get('show_all_times', False):
+                show_all_times_from_database()
     
     with col2:
         # Summary panel
@@ -1014,6 +1007,118 @@ def show_smart_availability_results(user_email: str, user_preferences: Dict, sel
     except Exception as e:
         st.error(f"❌ Error displaying smart results: {e}")
         logger.error(f"Smart results error: {e}")
+
+def show_all_times_from_database():
+    """Show all available times from the latest database entry."""
+    try:
+        # Get all times from API
+        response = requests.get(f"{API_BASE_URL}/api/all-times", timeout=10)
+        
+        if response.status_code != 200:
+            st.error("❌ Cannot retrieve all times data from database.")
+            return
+        
+        data = response.json()
+        
+        if not data.get("cached"):
+            st.info(data.get("message", "💾 No cached results available. Run the golf monitor to collect data."))
+            return
+        
+        # Display header with comprehensive info
+        st.markdown("#### 🌐 All Available Times (Database)")
+        
+        # Show cache info
+        cache_time = data.get('check_timestamp', '')
+        if cache_time:
+            try:
+                from datetime import datetime
+                dt = datetime.fromisoformat(cache_time.replace('Z', '+00:00'))
+                time_str = dt.strftime('%Y-%m-%d %H:%M:%S')
+                hours_ago = (datetime.now() - dt).total_seconds() / 3600
+                
+                if hours_ago < 1:
+                    freshness = f"{int(hours_ago * 60)} minutes ago"
+                else:
+                    freshness = f"{hours_ago:.1f} hours ago"
+                    
+                st.caption(f"📅 Data from: {time_str} ({freshness})")
+            except:
+                st.caption(f"📅 Data from: {cache_time}")
+        
+        # Show summary statistics
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Courses", data.get('total_courses', 0))
+        with col2:
+            st.metric("Courses with Data", data.get('courses_with_data', 0))
+        with col3:
+            st.metric("Total Time Slots", data.get('total_availability_slots', 0))
+        with col4:
+            st.metric("Dates Found", len(data.get('dates_found', [])))
+        
+        # Get availability data
+        availability = data.get("availability", {})
+        
+        if not availability:
+            st.info("🚫 No availability data in database.")
+            return
+        
+        # Get unique dates from the data
+        dates_found = data.get('dates_found', [])
+        
+        if not dates_found:
+            st.info("🚫 No valid dates found in database.")
+            return
+        
+        # Show results for each date
+        for date_str in dates_found:
+            # Display date header
+            try:
+                from datetime import datetime, date
+                date_obj = date.fromisoformat(date_str)
+                day_name = date_obj.strftime('%A')
+                
+                # Check if it's today, tomorrow, etc.
+                today = date.today()
+                days_diff = (date_obj - today).days
+                
+                if days_diff == 0:
+                    date_display = f"Today ({day_name}, {date_str})"
+                elif days_diff == 1:
+                    date_display = f"Tomorrow ({day_name}, {date_str})"
+                elif days_diff == -1:
+                    date_display = f"Yesterday ({day_name}, {date_str})"
+                else:
+                    date_display = f"{day_name}, {date_str}"
+                    
+            except:
+                date_display = date_str
+            
+            st.markdown(f"### 📅 {date_display}")
+            
+            # Group by course and display
+            course_results = {}
+            for state_key, times in availability.items():
+                if state_key.endswith(f"_{date_str}"):
+                    course_name = state_key.replace(f"_{date_str}", "")
+                    if course_name not in course_results:
+                        course_results[course_name] = []
+                    
+                    for time_slot, capacity in sorted(times.items()):
+                        course_results[course_name].append(f"{time_slot} ({capacity} spots)")
+            
+            # Display course results
+            if course_results:
+                for course_name, time_slots in sorted(course_results.items()):
+                    st.markdown(f"**🏌️ {course_name}:** {', '.join(time_slots)}")
+            else:
+                st.info(f"No availability data for {date_str}")
+        
+        st.success(f"✅ Retrieved {len(availability)} course results with {data.get('total_availability_slots', 0)} total time slots")
+            
+    except Exception as e:
+        st.error(f"❌ Error displaying all times: {e}")
+        logger.error(f"Error in show_all_times_from_database: {e}")
 
 if __name__ == "__main__":
     main()
