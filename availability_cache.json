@@ -1,9 +1,9 @@
 {
-  "timestamp": "2025-08-28T13:58:30.093651",
+  "timestamp": "2025-08-28T14:06:07.233801",
   "check_type": "scheduled",
   "results": {
     "success": true,
-    "timestamp": "2025-08-28T13:58:25.973645",
+    "timestamp": "2025-08-28T14:06:03.087847",
     "availability": {
       "Gersj\u00f8en Golfklubb_2025-08-28": {
         "17:10": 3,
@@ -31,7 +31,7 @@
       "Ballerud Golfklubb_2025-08-28": {},
       "Dr\u00f8bak BK_2025-08-28": {
         "17:06": 3,
-        "17:42": 3
+        "17:42": 4
       },
       "Miklagard GK_2025-08-28": {
         "18:00": 4
@@ -95,12 +95,12 @@
         "17:00": 4,
         "16:10": 4,
         "17:10": 4,
+        "16:20": 4,
         "17:20": 4,
         "16:30": 4,
         "16:40": 4,
         "16:50": 4,
-        "17:50": 4,
-        "16:20": 4
+        "17:50": 4
       },
       "Gr\u00f8nmo Golfklubb_2025-08-29": {},
       "Oslo Golfklubb_2025-08-29": {},
@@ -242,8 +242,7 @@
       },
       "Haga GK_2025-08-29": {
         "18:00": 4,
-        "17:50": 4,
-        "17:30": 4
+        "17:50": 4
       },
       "Hauger GK_2025-08-29": {
         "17:00": 4,
@@ -286,10 +285,10 @@
       }
     },
     "new_availability": [
-      "Gersj\u00f8en Golfklubb on 2025-08-28 at 16:40: 4 spots"
+      "Dr\u00f8bak BK on 2025-08-28 at 17:42: 4 spots"
     ],
     "total_courses": 26,
     "total_dates": 2,
-    "duration_seconds": 3505.973645
+    "duration_seconds": 363.087847
   }
 }

@@ -182,8 +182,8 @@ def parse_capacity_from_label(label: str) -> int:
             pass
     return 0
 
-async def check_course_availability(context: BrowserContext, url: str, course_name: str, target_date: datetime.date, time_window: tuple[int, int], min_players: int = 1) -> Dict[str, int]:
-    """Check availability for a single course and return times within window."""
+async def check_course_availability(context: BrowserContext, url: str, course_name: str, target_date: datetime.date, time_window: tuple[int, int], min_players: int = 1, no_time_filter: bool = False) -> Dict[str, int]:
+    """Check availability for a single course and return times within window (or all times if no_time_filter=True)."""
     page = None
     try:
         console.print(f"  → Checking {course_name} for {target_date.strftime('%Y-%m-%d')}...", style="cyan")
@@ -219,11 +219,14 @@ async def check_course_availability(context: BrowserContext, url: str, course_na
         if times:
             console.print(f"    DEBUG: Sample times: {dict(list(times.items())[:3])}", style="dim")
         
-        # Filter times within window and calculate capacity
+        # Filter times and calculate capacity
         available_times = {}
         for time_str, labels in times.items():
-            # Skip times that are within window but have already passed for today
-            if time_in_window(time_str, time_window) and not time_has_passed(time_str, target_date):
+            # If no_time_filter is True, include all times regardless of window
+            time_passes_filter = no_time_filter or time_in_window(time_str, time_window)
+            
+            # Skip times that have already passed for today (but keep all future dates)
+            if time_passes_filter and not time_has_passed(time_str, target_date):
                 total_capacity = sum(parse_capacity_from_label(lbl) for lbl in labels)
                 if total_capacity >= min_players:
                     available_times[time_str] = total_capacity
@@ -738,7 +741,11 @@ async def perform_availability_check(args, time_window, window_str, user_prefere
             url = rewrite_url_for_day(base_url, target_date)
             console.print(f"  DEBUG: Course {i+1} - {label}, Date: {date_str}", style="dim")
             
-            available_times = await check_course_availability(context, url, label, target_date, time_window, args.players)
+            # When no user preferences exist, scrape all times (no filtering)
+            no_time_filter = len(user_preferences) == 0
+            if no_time_filter:
+                console.print(f"    📍 Scraping ALL times (no time window filter)", style="yellow")
+            available_times = await check_course_availability(context, url, label, target_date, time_window, args.players, no_time_filter)
             
             # Store state with date key
             state_key = f"{label}_{date_str}"
@@ -871,6 +878,7 @@ async def main():
         console.print("📧 Each user will receive personalized email notifications based on their preferences", style="green")
     else:
         console.print("👥 No user preferences found - using legacy mode", style="yellow")
+        console.print("🔓 SCRAPING ALL TIMES - No time window filtering will be applied", style="bold yellow")
         console.print("💡 Create user profiles at your Streamlit app to enable personalized monitoring", style="dim")
     
     # Determine which clubs to monitor
@@ -968,7 +976,11 @@ async def main():
                         console.print(f"  DEBUG: Base URL: {base_url[:100]}...", style="dim")
                         console.print(f"  DEBUG: Rewritten URL: {url[:100]}...", style="dim")
                         
-                        available_times = await check_course_availability(context, url, label, target_date, time_window, args.players)
+                        # When no user preferences exist, scrape all times (no filtering)
+                        no_time_filter = len(user_preferences) == 0
+                        if no_time_filter:
+                            console.print(f"    📍 Scraping ALL times (no time window filter)", style="yellow")
+                        available_times = await check_course_availability(context, url, label, target_date, time_window, args.players, no_time_filter)
                         
                         # Store state with date key
                         state_key = f"{label}_{date_str}"
