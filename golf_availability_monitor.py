@@ -559,12 +559,32 @@ async def run_immediate_check(args, time_window, window_str):
             await browser.close()
 
 async def save_results_to_database(results: Dict, check_type: str = "scheduled"):
-    """Save availability results to database for offline access"""
+    """Save availability results to database for offline access and notification system"""
     # Check if database is enabled
     database_enabled = os.getenv("DATABASE_ENABLED", "true").lower() == "true"
     if not database_enabled:
         console.print("🏠 Database disabled - skipping database save", style="yellow")
         return
+    
+    # First, try to ingest the scraped data for the notification system
+    try:
+        from data_ingestion_service import integrate_with_golf_monitor
+        ingestion_service = integrate_with_golf_monitor()
+        
+        if ingestion_service:
+            # Add check_type to results for metadata
+            results_with_type = results.copy()
+            results_with_type['check_type'] = check_type
+            
+            success = ingestion_service.ingest_from_monitoring_results(results_with_type)
+            if success:
+                console.print("✅ Scraped data ingested for notification system", style="green")
+            else:
+                console.print("⚠️ Failed to ingest scraped data for notifications", style="yellow")
+        else:
+            console.print("⚠️ Data ingestion service not available", style="yellow")
+    except Exception as e:
+        console.print(f"⚠️ Data ingestion failed: {e}", style="yellow")
     
     try:
         # Try to import and use PostgreSQL manager with fallback
