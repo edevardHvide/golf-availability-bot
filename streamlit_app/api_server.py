@@ -455,6 +455,15 @@ async def get_cached_availability(user_email: str = None, hours_limit: int = 24)
             "message": "Error retrieving cached availability data"
         }
 
+@app.get("/api/debug-test")
+async def debug_test():
+    """Temporary debug endpoint to test if new code is running."""
+    return {
+        "message": "Debug endpoint working!",
+        "timestamp": datetime.now().isoformat(),
+        "code_version": "updated_api_server"
+    }
+
 @app.get("/api/all-times")
 async def get_all_times():
     """Get all available times from the latest database entry."""
