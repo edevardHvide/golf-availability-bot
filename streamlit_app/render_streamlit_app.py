@@ -350,8 +350,8 @@ def main():
     with col_header_text:
         st.markdown("""
         <div class="main-header">
-            <h1>🏌️ Golf Availability Monitor</h1>
-            <p>Smart tee time notifications with instant availability checking</p>
+            <h1 style="margin-bottom: 0.5rem;">🏌️ Golf Availability Monitor</h1>
+            <p style="margin-bottom: 0.5rem;">Smart tee time notifications with instant availability checking</p>
         </div>
         """, unsafe_allow_html=True)
     
@@ -360,9 +360,9 @@ def main():
             # Display the golf image using proper Streamlit image parameters
             st.image(
                 "assets/907d8ed5-d913-4739-8b1e-c66e7231793b.jpg",
-                caption="Perfect your swing! ⛳",
-                width=300,  # Fixed width for better layout control
-                use_column_width=False,  # Don't stretch to column width
+                caption="Founder - Edevard Hvide",
+                width=200,  # Smaller width to fit better on side
+                use_container_width=False,  # Updated deprecated parameter
                 clamp=False  # Don't clamp pixel values
             )
         except FileNotFoundError:
@@ -382,40 +382,6 @@ def main():
                 <small>Error loading image</small>
             </div>
             """, unsafe_allow_html=True)
-    
-    # Quick introduction section
-    st.markdown("""
-    <div class="intro-section">
-        <h3 style="color: #4CAF50; margin-bottom: 1rem;">🚀 Quick Start Guide</h3>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Use Streamlit columns instead of CSS grid for better compatibility
-    col_step1, col_step2, col_step3 = st.columns(3)
-    
-    with col_step1:
-        st.markdown("""
-        <div class="intro-step">
-            <h4 style="color: #4CAF50; text-align: center; margin-bottom: 0.5rem;">1️⃣ Profile Setup</h4>
-            <p style="text-align: center; font-size: 0.9rem;">Enter your name, email, and select your favorite golf courses</p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col_step2:
-        st.markdown("""
-        <div class="intro-step">
-            <h4 style="color: #4CAF50; text-align: center; margin-bottom: 0.5rem;">2️⃣ Time Preferences</h4>
-            <p style="text-align: center; font-size: 0.9rem;">Set different time intervals for weekdays vs weekends</p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col_step3:
-        st.markdown("""
-        <div class="intro-step">
-            <h4 style="color: #4CAF50; text-align: center; margin-bottom: 0.5rem;">3️⃣ Smart Check</h4>
-            <p style="text-align: center; font-size: 0.9rem;">Click "📊 Check Now" for instant results from cached data</p>
-    </div>
-    """, unsafe_allow_html=True)
     
     # Sidebar
     ui.show_connection_status()
@@ -656,8 +622,7 @@ def main():
         
         with col_settings2:
             # Removed notification frequency - not used anymore
-            st.markdown("**Additional Settings**")
-            st.info("Notifications are sent immediately when availability is found.")
+            pass
         
         st.markdown("---")
         

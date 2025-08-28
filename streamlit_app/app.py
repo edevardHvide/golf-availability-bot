@@ -424,8 +424,8 @@ def main():
     with col_header_text:
         st.markdown("""
         <div class="main-header">
-            <h1>🏌️ Golf Availability Monitor</h1>
-            <p>Smart tee time notifications with instant availability checking</p>
+            <h1 style="margin-bottom: 0.5rem;">🏌️ Golf Availability Monitor</h1>
+            <p style="margin-bottom: 0.5rem;">Smart tee time notifications with instant availability checking</p>
         </div>
         """, unsafe_allow_html=True)
     
@@ -434,9 +434,9 @@ def main():
             # Display the golf image using proper Streamlit image parameters
             st.image(
                 "assets/907d8ed5-d913-4739-8b1e-c66e7231793b.jpg",
-                caption="Perfect your swing! ⛳",
-                width=300,  # Fixed width for better layout control
-                use_column_width=False,  # Don't stretch to column width
+                caption="Founder - Edevard Hvide",
+                width=200,  # Smaller width to fit better on side
+                use_container_width=False,  # Updated deprecated parameter
                 clamp=False  # Don't clamp pixel values
             )
         except FileNotFoundError:
@@ -454,40 +454,6 @@ def main():
                 <h3>🏌️</h3>
                 <p>Golf Image</p>
                 <small>Error loading image</small>
-            </div>
-            """, unsafe_allow_html=True)
-    
-    # Quick introduction section
-    st.markdown("""
-    <div class="intro-section">
-        <h3 style="color: #4CAF50; margin-bottom: 1rem;">🚀 Quick Start Guide</h3>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Use Streamlit columns instead of CSS grid for better compatibility
-    col_step1, col_step2, col_step3 = st.columns(3)
-    
-    with col_step1:
-        st.markdown("""
-        <div class="intro-step">
-            <h4 style="color: #4CAF50; text-align: center; margin-bottom: 0.5rem;">1️⃣ Profile Setup</h4>
-            <p style="text-align: center; font-size: 0.9rem;">Enter your name, email, and select your favorite golf courses</p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col_step2:
-        st.markdown("""
-        <div class="intro-step">
-            <h4 style="color: #4CAF50; text-align: center; margin-bottom: 0.5rem;">2️⃣ Time Preferences</h4>
-            <p style="text-align: center; font-size: 0.9rem;">Set different time intervals for weekdays vs weekends</p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col_step3:
-        st.markdown("""
-        <div class="intro-step">
-            <h4 style="color: #4CAF50; text-align: center; margin-bottom: 0.5rem;">3️⃣ Smart Check</h4>
-            <p style="text-align: center; font-size: 0.9rem;">Click "📊 Check Now" for instant results from cached data</p>
             </div>
             """, unsafe_allow_html=True)
     
@@ -693,10 +659,10 @@ def main():
         
         with col_settings1:
             min_players = st.selectbox(
-                "Minimum Available Spots",
+                "Number of Players",
                 [1, 2, 3, 4],
                 index=preferences.get('min_players', 1) - 1,
-                help="Minimum number of spots needed for notification"
+                help="Number of players in your group"
             )
         
         days_ahead = st.slider(
@@ -709,8 +675,7 @@ def main():
         
         with col_settings2:
             # Removed notification frequency - not used anymore
-            st.markdown("**Additional Settings**")
-            st.info("Notifications are sent immediately when availability is found.")
+            pass
         
         st.markdown("---")
         
@@ -774,8 +739,10 @@ def main():
                     st.error("❌ Failed to save profile. Please try again.")
         
         with col_save2:
-            # Test notification button removed
-            pass
+            # Availability check button - always available
+            if st.button("📊 Check Now", use_container_width=True, type="primary"):
+                st.session_state.show_smart_results = True
+                st.rerun()
         
         with col_save3:
             if st.button("🗑️ Clear Form", use_container_width=True):
@@ -783,38 +750,31 @@ def main():
                 st.session_state.current_user_email = None
                 st.rerun()
         
-        # Smart availability check section - shows cached data instantly
-        if name and email and selected_courses and time_slots:
-            st.markdown("---")
-            st.markdown("### 📊 Smart Availability Check")
-            st.info("⚡ **Instant Results:** Shows latest cached data filtered for your preferences.")
-            
-            col_check1, col_check2, col_check3 = st.columns(3)
-            
-            with col_check1:
-                if st.button("📊 Check Now", use_container_width=True, type="primary"):
-                    # Show filtered cached results instantly
-                    st.session_state.show_smart_results = True
-                    st.rerun()
-            
-            with col_check2:
-                if st.button("🌐 Get All Times", use_container_width=True, type="secondary"):
-                    # Show all times from database
-                    st.session_state.show_all_times = True
-                    st.rerun()
-            
-            with col_check3:
-                if st.button("🔄 Refresh", use_container_width=True):
-                    st.rerun()
-            
-            # Show smart filtered results
-            if st.session_state.get('show_smart_results', False):
-                user_preferences = new_preferences if 'new_preferences' in locals() else preferences
-                show_smart_availability_results(email, user_preferences, selected_courses)
-            
-            # Show all times from database
-            if st.session_state.get('show_all_times', False):
-                show_all_times_from_database()
+        # Availability check section - always available
+        st.markdown("---")
+        st.markdown("### 📊 Availability Check")
+        st.info("⚡ **Instant Results:** Shows latest cached data filtered for your preferences.")
+        
+        col_check1, col_check2 = st.columns(2)
+        
+        with col_check1:
+            if st.button("🌐 Get All Times", use_container_width=True, type="secondary"):
+                # Show all times from database
+                st.session_state.show_all_times = True
+                st.rerun()
+        
+        with col_check2:
+            if st.button("🔄 Refresh", use_container_width=True):
+                st.rerun()
+        
+        # Show smart filtered results
+        if st.session_state.get('show_smart_results', False):
+            user_preferences = new_preferences if 'new_preferences' in locals() else preferences
+            show_smart_availability_results(email, user_preferences, selected_courses)
+        
+        # Show all times results
+        if st.session_state.get('show_all_times', False):
+            show_all_times_from_database()
     
     with col2:
         # Summary panel
