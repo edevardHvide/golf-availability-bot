@@ -331,8 +331,8 @@ def main():
     with col_header_text:
         st.markdown("""
         <div class="main-header">
-            <h1 style="margin-bottom: 0.5rem;">🏌️ Golf Availability Monitor</h1>
-            <p style="margin-bottom: 0.5rem;">Smart tee time notifications with instant availability checking</p>
+            <h1 style="margin-bottom: 0.25rem; font-size: 1.8rem;">🏌️ Golf Availability Monitor</h1>
+            <p style="margin-bottom: 0.25rem; font-size: 0.9rem;">Smart tee time notifications with instant availability checking</p>
         </div>
         """, unsafe_allow_html=True)
     
@@ -430,13 +430,17 @@ def main():
         available_courses = ui.get_available_courses()
         course_options = {course["name"]: course["key"] for course in available_courses}
         
+        # Select all toggle
+        select_all = st.checkbox("Select all courses")
+        default_selection = list(course_options.keys()) if select_all else [
+            name for name, course_key in course_options.items()
+            if course_key in preferences.get('selected_courses', [])
+        ]
+        
         selected_course_names = st.multiselect(
             "Select Golf Courses",
             options=list(course_options.keys()),
-            default=[
-                name for name, course_key in course_options.items()
-                if course_key in preferences.get('selected_courses', [])
-            ]
+            default=default_selection
         )
         
         selected_courses = [course_options[name] for name in selected_course_names]
@@ -634,7 +638,7 @@ def main():
         col_save1, col_save2 = st.columns(2)
         
         with col_save1:
-            if st.button("💾 Save Profile", disabled=not is_valid, use_container_width=True):
+            if st.button("💾 Save Profile", key="save_profile", disabled=not is_valid, use_container_width=True):
                 # Prepare preferences with proper structure
                 new_preferences = {
                     'name': name,
@@ -660,10 +664,8 @@ def main():
                     st.error(f"❌ {message}")
         
         with col_save2:
-            # Availability check button - always available
-            if st.button("📊 Check Now", use_container_width=True, type="primary"):
-                st.session_state.show_smart_results = True
-                st.rerun()
+            # Save column - no duplicate check button needed
+            pass
         
         # Smart availability check section - shows cached data instantly
         if name and email and selected_courses and time_slots:
@@ -674,19 +676,19 @@ def main():
             col_check1, col_check2, col_check3 = st.columns(3)
             
             with col_check1:
-                if st.button("📊 Check Now", use_container_width=True, type="primary"):
+                if st.button("📊 Check Now", key="check_now", use_container_width=True, type="primary"):
                     # Show filtered cached results instantly
                     st.session_state.show_smart_results = True
                     st.rerun()
             
             with col_check2:
-                if st.button("🌐 Get All Times", use_container_width=True, type="secondary"):
+                if st.button("🌐 Get All Times", key="get_all_times", use_container_width=True, type="secondary"):
                     # Show all times from database
                     st.session_state.show_all_times = True
                     st.rerun()
             
             with col_check3:
-                if st.button("🔄 Refresh", use_container_width=True):
+                if st.button("🔄 Refresh", key="refresh_smart", use_container_width=True):
                     st.rerun()
             
             # Show smart filtered results

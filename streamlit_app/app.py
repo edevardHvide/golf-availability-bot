@@ -424,8 +424,8 @@ def main():
     with col_header_text:
         st.markdown("""
         <div class="main-header">
-            <h1 style="margin-bottom: 0.5rem;">🏌️ Golf Availability Monitor</h1>
-            <p style="margin-bottom: 0.5rem;">Smart tee time notifications with instant availability checking</p>
+            <h1 style="margin-bottom: 0.25rem; font-size: 1.8rem;">🏌️ Golf Availability Monitor</h1>
+            <p style="margin-bottom: 0.25rem; font-size: 0.9rem;">Smart tee time notifications with instant availability checking</p>
         </div>
         """, unsafe_allow_html=True)
     
@@ -496,13 +496,17 @@ def main():
         available_courses = app.get_available_courses()
         course_options = {course["name"]: course["key"] for course in available_courses}
         
+        # Select all toggle
+        select_all = st.checkbox("Select all courses")
+        default_selection = list(course_options.keys()) if select_all else [
+            name for name, course_key in course_options.items()
+            if course_key in preferences.get('selected_courses', [])
+        ]
+        
         selected_course_names = st.multiselect(
             "Select Golf Courses",
             options=list(course_options.keys()),
-            default=[
-                name for name, course_key in course_options.items()
-                if course_key in preferences.get('selected_courses', [])
-            ],
+            default=default_selection,
             help="Choose the golf courses you want to monitor"
         )
         
@@ -777,46 +781,8 @@ def main():
             show_all_times_from_database()
     
     with col2:
-        # Summary panel
-        st.markdown("### 📋 Configuration Summary")
-        
-        if name and email:
-            st.markdown(f"**User:** {name}")
-            st.markdown(f"**Email:** {email}")
-        
-        if selected_courses:
-            st.markdown(f"**Courses:** {len(selected_courses)} selected")
-            for course_name in selected_course_names[:3]:  # Show first 3
-                st.markdown(f"• {course_name}")
-            if len(selected_course_names) > 3:
-                st.markdown(f"• ... and {len(selected_course_names) - 3} more")
-        
-        if time_slots:
-            st.markdown(f"**Time Slots:** {len(time_slots)} selected")
-            if len(time_slots) <= 6:
-                for slot in time_slots:
-                    st.markdown(f"• {slot}")
-            else:
-                for slot in time_slots[:3]:
-                    st.markdown(f"• {slot}")
-                st.markdown(f"• ... and {len(time_slots) - 3} more")
-        
-        if is_valid:
-            st.markdown(f"**Monitoring:** {days_ahead} days ahead")
-            st.markdown(f"**Min Players:** {min_players}")
-            
-            # Show time preferences summary
-            if all_preferences:
-                st.markdown(f"**Time Preferences:** {day_type_preference}")
-                total_intervals = 0
-                for day_type, prefs in all_preferences.items():
-                    if prefs['time_intervals']:
-                        total_intervals += len(prefs['time_intervals'])
-                        day_label = day_type.replace('_', ' ').title()
-                        st.markdown(f"• {day_label}: {len(prefs['time_intervals'])} intervals")
-                
-                if total_intervals == 0 and time_slots:
-                    st.markdown(f"• Using preset ranges: {len(set(time_slots))} time slots")
+        # Remove configuration summary panel to save space
+        st.empty()
 
 def filter_availability_for_user(availability_data: Dict, user_preferences: Dict, selected_courses: List[str], target_date: str) -> Dict:
     """Filter availability data based on user's specific preferences"""
