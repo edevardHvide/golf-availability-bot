@@ -472,6 +472,20 @@ async def get_all_times():
                 availability_data = cached_data.get('availability_data', {})
                 check_timestamp = cached_data.get('check_timestamp')
                 
+                # Debug: Check the type and content of availability_data
+                logger.info(f"Debug: availability_data type: {type(availability_data)}")
+                logger.info(f"Debug: availability_data keys: {list(availability_data.keys())[:5] if availability_data else 'None'}")
+                
+                # Ensure availability_data is a dictionary
+                if isinstance(availability_data, str):
+                    try:
+                        import json
+                        availability_data = json.loads(availability_data)
+                        logger.info("Debug: Successfully parsed JSON string to dict")
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Debug: Failed to parse JSON string: {e}")
+                        availability_data = {}
+                
                 # Count total slots across all courses and dates
                 total_slots = 0
                 courses_with_data = 0

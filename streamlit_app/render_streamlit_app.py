@@ -1022,6 +1022,13 @@ def show_all_times_from_database():
         
         data = response.json()
         
+        # Debug: Log the response data
+        st.write("🔍 Debug: API Response received")
+        st.write(f"Response status: {response.status_code}")
+        st.write(f"Response data keys: {list(data.keys())}")
+        st.write(f"Cached flag: {data.get('cached')}")
+        st.write(f"Success flag: {data.get('success')}")
+        
         if not data.get("cached"):
             st.info(data.get("message", "💾 No cached results available. Run the golf monitor to collect data."))
             return
