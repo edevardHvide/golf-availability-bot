@@ -478,6 +478,103 @@ async def get_cached_availability_history(user_email: str = None, limit: int = 1
             "error": str(e)
         }
 
+@app.get("/api/all-times")
+async def get_all_times():
+    """Get all available times from the latest database entry."""
+    try:
+        if DATABASE_TYPE == "postgresql":
+            try:
+                db_manager = get_db_manager()
+                
+                # Get latest cached availability (no time limit to get the most recent)
+                cached_data = db_manager.get_latest_cached_availability(hours_limit=168)  # 7 days
+                
+                if cached_data:
+                    # Extract availability data from the cached result
+                    availability_data = cached_data.get('availability_data', {})
+                    check_timestamp = cached_data.get('check_timestamp')
+                    
+                    # Debug: Check the type and content of availability_data
+                    logger.info(f"Debug: availability_data type: {type(availability_data)}")
+                    logger.info(f"Debug: availability_data keys: {list(availability_data.keys())[:5] if availability_data else 'None'}")
+                    
+                    # Ensure availability_data is a dictionary
+                    if isinstance(availability_data, str):
+                        try:
+                            import json
+                            availability_data = json.loads(availability_data)
+                            logger.info("Debug: Successfully parsed JSON string to dict")
+                        except json.JSONDecodeError as e:
+                            logger.error(f"Debug: Failed to parse JSON string: {e}")
+                            availability_data = {}
+                    
+                    # Count total slots across all courses and dates
+                    total_slots = 0
+                    courses_with_data = 0
+                    dates_found = set()
+                    
+                    for state_key, times in availability_data.items():
+                        if '_' in state_key:
+                            course_name = state_key.split('_')[0]
+                            date_part = state_key.split('_')[-1]  # Fixed: use [-1] for date part
+                            if len(date_part) == 10:  # YYYY-MM-DD format
+                                dates_found.add(date_part)
+                                if times:
+                                    courses_with_data += 1
+                                    total_slots += len(times)
+                    
+                    return {
+                        "success": True,
+                        "cached": True,
+                        "check_timestamp": check_timestamp,
+                        "availability": availability_data,
+                        "total_courses": cached_data.get('total_courses', 0),
+                        "total_availability_slots": total_slots,
+                        "courses_with_data": courses_with_data,
+                        "dates_found": sorted(list(dates_found)),
+                        "message": f"✅ Retrieved {len(availability_data)} course results with {total_slots} total time slots"
+                    }
+                else:
+                    return {
+                        "success": True,
+                        "cached": False,
+                        "message": "💾 No cached results available. Run the golf monitor to collect data.",
+                        "availability": {},
+                        "total_courses": 0,
+                        "total_availability_slots": 0,
+                        "courses_with_data": 0,
+                        "dates_found": []
+                    }
+                    
+            except Exception as e:
+                logger.error(f"PostgreSQL error in get_all_times: {e}")
+                return {
+                    "success": False,
+                    "cached": False,
+                    "error": str(e),
+                    "message": "Error retrieving data from PostgreSQL"
+                }
+        else:
+            return {
+                "success": False,
+                "cached": False,
+                "message": "PostgreSQL database required for this endpoint",
+                "availability": {},
+                "total_courses": 0,
+                "total_availability_slots": 0,
+                "courses_with_data": 0,
+                "dates_found": []
+            }
+            
+    except Exception as e:
+        logger.error(f"Error getting all times: {e}")
+        return {
+            "success": False,
+            "cached": False,
+            "error": str(e),
+            "message": "Error retrieving all times data"
+        }
+
 @app.get("/api/database/health")
 async def database_health():
     """Database-specific health check."""
