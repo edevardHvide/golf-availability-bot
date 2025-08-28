@@ -391,15 +391,7 @@ async def list_backups():
         logger.error(f"Error listing backups: {e}")
         raise HTTPException(status_code=500, detail="Failed to list backups")
 
-@app.get("/api/all-times-simple")
-async def get_all_times_simple():
-    """Simple version of all times endpoint."""
-    return {
-        "success": True,
-        "cached": True,
-        "message": "Simple all times endpoint working!",
-        "test": "This should show up in the API"
-    }
+
 
 @app.get("/api/cached-availability")
 async def get_cached_availability(user_email: str = None, hours_limit: int = 24):
@@ -465,19 +457,7 @@ async def get_cached_availability(user_email: str = None, hours_limit: int = 24)
             "message": "Error retrieving cached availability data"
         }
 
-@app.get("/api/debug-test")
-async def debug_test():
-    """Temporary debug endpoint to test if new code is running."""
-    return {
-        "message": "Debug endpoint working!",
-        "timestamp": datetime.now().isoformat(),
-        "code_version": "updated_api_server"
-    }
 
-@app.get("/api/test-simple")
-async def test_simple():
-    """Simple test endpoint."""
-    return {"message": "Simple test endpoint working!"}
 
 @app.get("/api/all-times")
 async def get_all_times():

@@ -368,9 +368,10 @@ def main():
     ui.show_connection_status()
     ui.show_profile_management()
     
-    # Move service info to bottom of sidebar
+    # Add link to system info page
     st.sidebar.markdown("---")
-    ui.show_service_info()
+    if st.sidebar.button("🔧 System Info", help="View technical details and service status"):
+        st.switch_page("pages/system_info.py")
     
     # Main content
     if not ui.api_available:
@@ -1022,13 +1023,6 @@ def show_all_times_from_database():
         
         data = response.json()
         
-        # Debug: Log the response data
-        st.write("🔍 Debug: API Response received")
-        st.write(f"Response status: {response.status_code}")
-        st.write(f"Response data keys: {list(data.keys())}")
-        st.write(f"Cached flag: {data.get('cached')}")
-        st.write(f"Success flag: {data.get('success')}")
-        
         if not data.get("cached"):
             st.info(data.get("message", "💾 No cached results available. Run the golf monitor to collect data."))
             return
@@ -1055,6 +1049,7 @@ def show_all_times_from_database():
                 st.caption(f"📅 Data from: {cache_time}")
         
         # Show summary statistics
+        st.markdown("### 📊 Summary")
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric("Total Courses", data.get('total_courses', 0))
@@ -1064,6 +1059,41 @@ def show_all_times_from_database():
             st.metric("Total Time Slots", data.get('total_availability_slots', 0))
         with col4:
             st.metric("Dates Found", len(data.get('dates_found', [])))
+        
+        # Create a summary table showing courses with availability
+        st.markdown("### 🏌️ Courses with Availability")
+        
+        # Prepare summary data
+        summary_data = []
+        availability = data.get("availability", {})
+        
+        for state_key, times in availability.items():
+            if '_' in state_key and times:  # Only courses with actual availability
+                course_name = state_key.split('_')[0]
+                date_part = state_key.split('_')[-1]
+                if len(date_part) == 10:  # YYYY-MM-DD format
+                    total_slots = len(times)
+                    total_spots = sum(times.values())
+                    summary_data.append({
+                        "Course": course_name,
+                        "Date": date_part,
+                        "Time Slots": total_slots,
+                        "Total Spots": total_spots
+                    })
+        
+        if summary_data:
+            # Sort by date, then by course name
+            summary_data.sort(key=lambda x: (x["Date"], x["Course"]))
+            
+            # Display as a clean table
+            st.markdown("| Course | Date | Time Slots | Total Spots |")
+            st.markdown("|--------|------|------------|-------------|")
+            for row in summary_data:
+                st.markdown(f"| {row['Course']} | {row['Date']} | {row['Time Slots']} | {row['Total Spots']} |")
+        else:
+            st.info("No courses with availability found.")
+        
+        st.markdown("---")
         
         # Get availability data
         availability = data.get("availability", {})
@@ -1079,7 +1109,7 @@ def show_all_times_from_database():
             st.info("🚫 No valid dates found in database.")
             return
         
-        # Show results for each date
+        # Show results for each date in organized tables
         for date_str in dates_found:
             # Display date header
             try:
@@ -1105,7 +1135,7 @@ def show_all_times_from_database():
             
             st.markdown(f"### 📅 {date_display}")
             
-            # Group by course and display
+            # Group by course and prepare table data
             course_results = {}
             for state_key, times in availability.items():
                 if state_key.endswith(f"_{date_str}"):
@@ -1114,12 +1144,26 @@ def show_all_times_from_database():
                         course_results[course_name] = []
                     
                     for time_slot, capacity in sorted(times.items()):
-                        course_results[course_name].append(f"{time_slot} ({capacity} spots)")
+                        course_results[course_name].append({
+                            "time": time_slot,
+                            "spots": capacity
+                        })
             
-            # Display course results
+            # Display course results in organized tables
             if course_results:
                 for course_name, time_slots in sorted(course_results.items()):
-                    st.markdown(f"**🏌️ {course_name}:** {', '.join(time_slots)}")
+                    if time_slots:  # Only show courses with actual availability
+                        st.markdown(f"**🏌️ {course_name}**")
+                        
+                        # Create a clean table for this course
+                        if len(time_slots) > 0:
+                            # Use columns for better organization
+                            cols = st.columns(min(4, len(time_slots)))
+                            for i, slot in enumerate(time_slots):
+                                col_idx = i % len(cols)
+                                with cols[col_idx]:
+                                    st.markdown(f"🕐 **{slot['time']}** ({slot['spots']} spots)")
+                        st.markdown("---")
             else:
                 st.info(f"No availability data for {date_str}")
         
