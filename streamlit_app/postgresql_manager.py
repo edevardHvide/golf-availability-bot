@@ -108,6 +108,45 @@ class PostgreSQLManager:
         -- Create index on JSONB preferences for faster JSON queries
         CREATE INDEX IF NOT EXISTS idx_user_preferences_preferences ON user_preferences USING GIN (preferences);
         
+        -- Scraped times table (for storing all scraped availability data)
+        CREATE TABLE IF NOT EXISTS scraped_times (
+            time_id SERIAL PRIMARY KEY,
+            course_name VARCHAR(255) NOT NULL,
+            date DATE NOT NULL,
+            time_slot VARCHAR(10) NOT NULL,
+            spots_available INTEGER NOT NULL,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            metadata JSONB DEFAULT '{}'::jsonb
+        );
+        
+        -- Create indexes for scraped times
+        CREATE INDEX IF NOT EXISTS idx_scraped_times_date ON scraped_times(date);
+        CREATE INDEX IF NOT EXISTS idx_scraped_times_course ON scraped_times(course_name);
+        CREATE INDEX IF NOT EXISTS idx_scraped_times_created_at ON scraped_times(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_scraped_times_composite ON scraped_times(course_name, date, time_slot);
+        
+        -- Sent notifications table (for tracking what notifications have been sent)
+        CREATE TABLE IF NOT EXISTS sent_notifications (
+            notification_id SERIAL PRIMARY KEY,
+            user_id INTEGER REFERENCES user_preferences(id) ON DELETE CASCADE,
+            user_email VARCHAR(255) REFERENCES user_preferences(email) ON DELETE CASCADE,
+            time_id INTEGER REFERENCES scraped_times(time_id) ON DELETE CASCADE,
+            notification_type VARCHAR(50) NOT NULL, -- 'daily_report', 'new_availability'
+            course_name VARCHAR(255) NOT NULL,
+            date DATE NOT NULL,
+            time_slot VARCHAR(10) NOT NULL,
+            sent_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            email_subject TEXT,
+            email_content TEXT,
+            metadata JSONB DEFAULT '{}'::jsonb
+        );
+        
+        -- Create indexes for sent notifications
+        CREATE INDEX IF NOT EXISTS idx_sent_notifications_user_email ON sent_notifications(user_email);
+        CREATE INDEX IF NOT EXISTS idx_sent_notifications_type ON sent_notifications(notification_type);
+        CREATE INDEX IF NOT EXISTS idx_sent_notifications_sent_at ON sent_notifications(sent_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_sent_notifications_composite ON sent_notifications(user_email, course_name, date, time_slot);
+        
         -- Monitoring sessions table (for tracking active monitoring)
         CREATE TABLE IF NOT EXISTS monitoring_sessions (
             id SERIAL PRIMARY KEY,
@@ -528,6 +567,168 @@ class PostgreSQLManager:
             logger.error(f"❌ Failed to cleanup old data: {e}")
             return False
     
+    def save_scraped_times(self, scraped_data: List[Dict]) -> bool:
+        """Save scraped availability data to database."""
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    for data in scraped_data:
+                        cur.execute("""
+                            INSERT INTO scraped_times (course_name, date, time_slot, spots_available, metadata)
+                            VALUES (%s, %s, %s, %s, %s)
+                            ON CONFLICT DO NOTHING
+                        """, (
+                            data.get('course_name'),
+                            data.get('date'),
+                            data.get('time_slot'),
+                            data.get('spots_available'),
+                            Json(data.get('metadata', {}))
+                        ))
+                    
+                    conn.commit()
+                    logger.info(f"✅ Saved {len(scraped_data)} scraped time entries")
+                    return True
+                    
+        except Exception as e:
+            logger.error(f"❌ Failed to save scraped times: {e}")
+            return False
+    
+    def get_scraped_times_for_user(self, user_email: str, days_ahead: int = 7) -> List[Dict]:
+        """Get scraped times that match a user's preferences."""
+        try:
+            # First get user preferences
+            user_prefs = self.load_user_preferences(user_email)
+            if not user_prefs:
+                return []
+            
+            selected_courses = user_prefs.get('selected_courses', [])
+            if not selected_courses:
+                return []
+            
+            with self.get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    # Get scraped times for user's preferred courses within date range
+                    cur.execute("""
+                        SELECT DISTINCT ON (course_name, date, time_slot)
+                            time_id, course_name, date, time_slot, spots_available, created_at, metadata
+                        FROM scraped_times 
+                        WHERE course_name = ANY(%s)
+                        AND date >= CURRENT_DATE
+                        AND date <= CURRENT_DATE + INTERVAL '%s days'
+                        ORDER BY course_name, date, time_slot, created_at DESC
+                    """, (selected_courses, days_ahead))
+                    
+                    results = cur.fetchall()
+                    return [dict(row) for row in results]
+                    
+        except Exception as e:
+            logger.error(f"❌ Failed to get scraped times for user {user_email}: {e}")
+            return []
+    
+    def get_new_scraped_times_for_user(self, user_email: str, hours_back: int = 24) -> List[Dict]:
+        """Get scraped times that are new (not previously notified) for a user."""
+        try:
+            user_prefs = self.load_user_preferences(user_email)
+            if not user_prefs:
+                return []
+            
+            selected_courses = user_prefs.get('selected_courses', [])
+            min_players = user_prefs.get('min_players', 1)
+            
+            if not selected_courses:
+                return []
+            
+            with self.get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    # Get scraped times that haven't been notified to this user
+                    cur.execute("""
+                        SELECT DISTINCT ON (st.course_name, st.date, st.time_slot)
+                            st.time_id, st.course_name, st.date, st.time_slot, 
+                            st.spots_available, st.created_at, st.metadata
+                        FROM scraped_times st
+                        LEFT JOIN sent_notifications sn ON (
+                            sn.user_email = %s 
+                            AND sn.course_name = st.course_name 
+                            AND sn.date = st.date 
+                            AND sn.time_slot = st.time_slot
+                            AND sn.notification_type = 'new_availability'
+                        )
+                        WHERE st.course_name = ANY(%s)
+                        AND st.date >= CURRENT_DATE
+                        AND st.spots_available >= %s
+                        AND st.created_at >= NOW() - INTERVAL '%s hours'
+                        AND sn.notification_id IS NULL
+                        ORDER BY st.course_name, st.date, st.time_slot, st.created_at DESC
+                    """, (user_email, selected_courses, min_players, hours_back))
+                    
+                    results = cur.fetchall()
+                    return [dict(row) for row in results]
+                    
+        except Exception as e:
+            logger.error(f"❌ Failed to get new scraped times for user {user_email}: {e}")
+            return []
+    
+    def record_sent_notification(self, user_email: str, time_id: int, notification_type: str, 
+                                course_name: str, date: str, time_slot: str, 
+                                email_subject: str = None, email_content: str = None) -> bool:
+        """Record that a notification has been sent to prevent duplicates."""
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    # Get user ID
+                    cur.execute("SELECT id FROM user_preferences WHERE email = %s", (user_email,))
+                    user_result = cur.fetchone()
+                    if not user_result:
+                        logger.error(f"User not found: {user_email}")
+                        return False
+                    
+                    user_id = user_result[0]
+                    
+                    cur.execute("""
+                        INSERT INTO sent_notifications 
+                        (user_id, user_email, time_id, notification_type, course_name, date, time_slot, 
+                         email_subject, email_content)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT DO NOTHING
+                    """, (
+                        user_id, user_email, time_id, notification_type, course_name, 
+                        date, time_slot, email_subject, email_content
+                    ))
+                    
+                    conn.commit()
+                    logger.info(f"✅ Recorded {notification_type} notification for {user_email}")
+                    return True
+                    
+        except Exception as e:
+            logger.error(f"❌ Failed to record sent notification: {e}")
+            return False
+    
+    def get_notification_history(self, user_email: str = None, limit: int = 100) -> List[Dict]:
+        """Get history of sent notifications."""
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    if user_email:
+                        cur.execute("""
+                            SELECT * FROM sent_notifications 
+                            WHERE user_email = %s 
+                            ORDER BY sent_at DESC 
+                            LIMIT %s
+                        """, (user_email, limit))
+                    else:
+                        cur.execute("""
+                            SELECT * FROM sent_notifications 
+                            ORDER BY sent_at DESC 
+                            LIMIT %s
+                        """, (limit,))
+                    
+                    results = cur.fetchall()
+                    return [dict(row) for row in results]
+                    
+        except Exception as e:
+            logger.error(f"❌ Failed to get notification history: {e}")
+            return []
+
     def close(self):
         """Close database connections."""
         try:
