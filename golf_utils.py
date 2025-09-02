@@ -298,7 +298,20 @@ def send_email_notification(subject: str, new_availability: list = None, all_ava
     - SMTP_PASS=your-app-password (16-character app password for Gmail)
     - EMAIL_FROM=your-email@gmail.com
     - EMAIL_TO=recipient@example.com
+    
+    IMPORTANT: This function is disabled for local runs to prevent duplicate emails.
+    Emails are only sent from the Render background worker.
     """
+    # Check if this is a local run - if so, disable email sending
+    is_render_worker = os.environ.get('RENDER_SERVICE_ID') is not None
+    is_local_run = not is_render_worker
+    
+    if is_local_run:
+        print("[EMAIL] 🚫 Email sending disabled for local runs")
+        print("[EMAIL] Emails are only sent from the Render background worker")
+        print("[EMAIL] This prevents duplicate notifications")
+        return
+    
     # Default to empty lists/dicts if not provided
     if new_availability is None:
         new_availability = []

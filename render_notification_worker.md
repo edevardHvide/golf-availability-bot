@@ -36,14 +36,13 @@ Add these environment variables to your worker service:
 DATABASE_URL=postgresql://user:password@host:port/database
 
 # Email Configuration
-EMAIL_USER=your-email@gmail.com
-EMAIL_PASSWORD=your-app-password
-SMTP_SERVER=smtp.gmail.com
+EMAIL_ENABLED=true
+SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
-
-# Optional Email Settings
-FROM_EMAIL=your-email@gmail.com
-REPLY_TO_EMAIL=your-email@gmail.com
+SMTP_SSL=false
+SMTP_USER=your-email@gmail.com
+SMTP_PASS=your-app-password
+EMAIL_FROM=your-email@gmail.com
 ```
 
 #### Gmail Setup:

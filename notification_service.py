@@ -3,10 +3,11 @@
 Golf Availability Notification Service
 
 This service handles:
-1. Daily morning reports (07:00 UTC)
-2. New availability notifications (every 10 minutes)
+1. Daily morning reports (07:00 UTC) - Today + 2 days ahead
+2. New availability notifications (every 20 minutes)
 
-Designed to run as a Render background worker.
+Designed to run ONLY as a Render background worker.
+Local runs should NOT send emails.
 """
 
 import os
@@ -112,7 +113,7 @@ class NotificationService:
         logger.info("🔔 Notification service initialized")
     
     def format_daily_report_content(self, user_name: str, user_email: str, matching_times: List[Dict]) -> tuple[str, str]:
-        """Format the daily report email content."""
+        """Format the daily report email content for today + 2 days ahead."""
         if not matching_times:
             return None, None
         
@@ -151,6 +152,8 @@ class NotificationService:
                         date_display = "I dag"
                     elif date_obj == date.today() + timedelta(days=1):
                         date_display = "I morgen"
+                    elif date_obj == date.today() + timedelta(days=2):
+                        date_display = "I overmorgen"
                     else:
                         weekdays = ['Mandag', 'Tirsdag', 'Onsdag', 'Torsdag', 'Fredag', 'Lørdag', 'Søndag']
                         date_display = f"{weekdays[date_obj.weekday()]} {date_obj.strftime('%d.%m')}"
@@ -215,9 +218,11 @@ class NotificationService:
                         date_display = "I dag"
                     elif date_obj == date.today() + timedelta(days=1):
                         date_display = "I morgen"
+                    elif date_obj == date.today() + timedelta(days=2):
+                        date_display = "I overmorgen"
                     else:
                         weekdays = ['Mandag', 'Tirsdag', 'Onsdag', 'Torsdag', 'Fredag', 'Lørdag', 'Søndag']
-                        date_display = f"{weekdays[date_obj.weekday()]} {date_obj.strftime('%d.%m')}"
+                        date_display = f"{weekdays[date_obj.weekday()]} {date_str}"
                 except:
                     date_display = date_str
                 
@@ -241,7 +246,7 @@ class NotificationService:
         return subject, content
     
     async def send_daily_reports(self) -> Dict[str, Any]:
-        """Send daily morning reports to all users."""
+        """Send daily morning reports to all users for today + 2 days ahead."""
         logger.info("📧 Starting daily report generation...")
         
         try:
@@ -257,23 +262,31 @@ class NotificationService:
             for user_email, user_prefs in all_users.items():
                 try:
                     user_name = user_prefs.get('name', user_email.split('@')[0])
-                    days_ahead = user_prefs.get('days_ahead', 7)
+                    # Changed from 7 days to 3 days (today + 2 days ahead)
+                    days_ahead = 3
                     
                     logger.info(f"📊 Generating daily report for {user_name} ({user_email})")
                     
-                    # Get matching scraped times for this user
+                    # Get matching scraped times for this user (today + 2 days ahead)
                     matching_times = self.db_manager.get_scraped_times_for_user(user_email, days_ahead)
                     
+                    # Always send daily report, even if no matching times
                     if matching_times:
-                        # Format email content
+                        # Format email content with available times
                         subject, content = self.format_daily_report_content(user_name, user_email, matching_times)
+                        logger.info(f"📊 Found {len(matching_times)} matching times for {user_name}")
+                    else:
+                        # Format email content for no availability
+                        subject, content = self.format_daily_report_content(user_name, user_email, [])
+                        logger.info(f"📭 No matching times found for {user_name} - sending 'no availability' report")
+                    
+                    if subject and content:
+                        # Send email
+                        success = self.email_service.send_email(user_email, subject, content)
                         
-                        if subject and content:
-                            # Send email
-                            success = self.email_service.send_email(user_email, subject, content)
-                            
-                            if success:
-                                reports_sent += 1
+                        if success:
+                            reports_sent += 1
+                            if matching_times:
                                 logger.info(f"✅ Daily report sent to {user_name} with {len(matching_times)} matching times")
                                 
                                 # Record the notification for each time slot
@@ -289,11 +302,11 @@ class NotificationService:
                                         email_content=content[:1000]  # Truncate for storage
                                     )
                             else:
-                                errors.append(f"Failed to send email to {user_email}")
+                                logger.info(f"✅ Daily 'no availability' report sent to {user_name}")
                         else:
-                            logger.info(f"📭 No content generated for {user_name} - skipping email")
+                            errors.append(f"Failed to send email to {user_email}")
                     else:
-                        logger.info(f"📭 No matching times found for {user_name} - no email sent")
+                        logger.error(f"❌ Failed to generate email content for {user_name}")
                         
                 except Exception as e:
                     error_msg = f"Error processing daily report for {user_email}: {e}"
@@ -320,7 +333,7 @@ class NotificationService:
             }
     
     async def send_new_availability_notifications(self) -> Dict[str, Any]:
-        """Send notifications for new availability (every 10 minutes)."""
+        """Send notifications for new availability (every 20 minutes)."""
         logger.info("🔔 Checking for new availability notifications...")
         
         try:
@@ -397,7 +410,7 @@ class NotificationService:
 
 async def run_notification_worker():
     """Main worker function that runs the notification jobs."""
-    logger.info("🚀 Starting Golf Notification Worker")
+    logger.info("🚀 Starting Golf Notification Worker (Render Background Service)")
     
     try:
         # Initialize notification service
@@ -411,11 +424,15 @@ async def run_notification_worker():
                 current_time = datetime.now()
                 
                 # Check if it's time for daily report (07:00 UTC)
-                if (current_time.hour == 7 and current_time.minute < 10 and 
+                # More robust timing: check if it's 07:00-07:59 and we haven't sent today's report
+                should_send_daily = (
+                    current_time.hour == 7 and 
                     (last_daily_report is None or 
-                     last_daily_report.date() < current_time.date())):
-                    
-                    logger.info("🌅 Time for daily reports (07:00 UTC)")
+                     last_daily_report.date() < current_time.date())
+                )
+                
+                if should_send_daily:
+                    logger.info("🌅 Time for daily reports (07:00 UTC) - Today + 2 days ahead")
                     result = await notification_service.send_daily_reports()
                     last_daily_report = current_time
                     
@@ -424,9 +441,9 @@ async def run_notification_worker():
                     else:
                         logger.error(f"❌ Daily reports failed: {result.get('error')}")
                 
-                # Run new availability notifications (every 10 minutes)
-                if current_time.minute % 10 == 0:
-                    logger.info("🔔 Running new availability check")
+                # Run new availability notifications (every 20 minutes, not 10)
+                if current_time.minute % 20 == 0:
+                    logger.info("🔔 Running new availability check (every 20 minutes)")
                     result = await notification_service.send_new_availability_notifications()
                     
                     if result['success']:
@@ -450,6 +467,20 @@ async def run_notification_worker():
         raise
 
 if __name__ == "__main__":
+    # Check if this is running in Render environment
+    is_render_worker = os.environ.get('RENDER_SERVICE_ID') is not None
+    
+    if not is_render_worker:
+        logger.error("❌ This notification service is designed to run ONLY in Render environment")
+        logger.error("❌ Local runs are disabled to prevent duplicate email notifications")
+        logger.error("❌ Deploy this as a Render Background Worker instead")
+        logger.error("")
+        logger.error("To deploy on Render:")
+        logger.error("1. Create Background Worker service")
+        logger.error("2. Set environment variables (DATABASE_URL, SMTP_USER, SMTP_PASS, EMAIL_ENABLED)")
+        logger.error("3. Use start command: bash render_worker_start.sh")
+        sys.exit(1)
+    
     # Check required environment variables (matching golf_utils.py)
     required_vars = ['SMTP_USER', 'SMTP_PASS', 'EMAIL_ENABLED', 'DATABASE_URL']
     missing_vars = [var for var in required_vars if not os.environ.get(var)]
@@ -462,6 +493,8 @@ if __name__ == "__main__":
         logger.error("  EMAIL_ENABLED=true")
         logger.error("  DATABASE_URL=postgresql://...")
         sys.exit(1)
+    
+    logger.info("✅ Running in Render environment - starting notification worker")
     
     # Run the notification worker
     asyncio.run(run_notification_worker())
